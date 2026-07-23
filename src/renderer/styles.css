@@ -114,7 +114,13 @@ button { -webkit-app-region: no-drag; }
 .download-actions { display: flex; align-items: center; }
 .download-progress { width: 74px; height: 4px; margin-left: 10px; overflow: hidden; background: #ebebee; border-radius: 999px; }
 .download-progress i { display: block; height: 100%; background: #6366f1; border-radius: inherit; transition: width 180ms ease; }
-.download-progress--paused i { background: #9fa2b4; }
+.download-progress--indeterminate i { width: 40%; animation: indeterminate-progress 1.4s ease-in-out infinite; }
+.download-progress--paused i { background: #9fa2b4; animation: none; }
+
+@keyframes indeterminate-progress {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
 
 @keyframes spin { to { transform: rotate(360deg); } }
 

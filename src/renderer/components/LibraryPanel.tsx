@@ -115,7 +115,7 @@ function DownloadList({ downloads, onOpenDownload, onRevealDownload, onPauseDown
         <div className="library-entry library-entry--download" key={download.id}>
           <span className={`download-icon download-icon--${download.status}`}><Icon name="download" size={17} /></span>
           <span className="library-entry__download-copy"><strong title={download.filename}>{download.filename}</strong><small>{downloadStatus(download)}</small>{download.error && <em>{download.error}</em>}</span>
-          {download.status === "in-progress" && <span className={`download-progress ${download.isPaused ? "download-progress--paused" : ""}`} aria-label="Download in progress"><i style={{ width: download.totalBytes ? `${Math.min(100, (download.receivedBytes / download.totalBytes) * 100)}%` : "35%" }} /></span>}
+          {download.status === "in-progress" && <span className={`download-progress ${download.totalBytes > 0 ? "" : "download-progress--indeterminate"} ${download.isPaused ? "download-progress--paused" : ""}`} aria-label="Download in progress"><i style={download.totalBytes > 0 ? { width: `${Math.min(100, Math.max(0, (download.receivedBytes / download.totalBytes) * 100))}%` } : undefined} /></span>}
           {download.status === "in-progress" && (
             <span className="download-actions">
               {download.isPaused ? (
