@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, type MenuItemConstructorOptions, session, shell, WebContentsView } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions, session, shell, WebContentsView } from "electron";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -22,6 +22,7 @@ let activeTabId = "";
 let libraryVisible = false;
 let isRestoringSession = false;
 let sessionSaved = false;
+let forceCloseForActiveDownloads = false;
 let dataStore: BrowserDataStore;
 let downloads: StoredDownload[] = [];
 const tabs = new Map<string, TabRecord>();
@@ -551,12 +552,37 @@ function buildApplicationMenu(): void {
 
 function createWindow(): void {
   sessionSaved = false;
+  forceCloseForActiveDownloads = false;
   mainWindow = new BrowserWindow({
     width: 1240, height: 820, minWidth: 760, minHeight: 540, title: "Lily Browser", backgroundColor: "#f7f7f8", show: false,
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   mainWindow.once("ready-to-show", () => mainWindow?.show());
-  mainWindow.on("close", () => {
+  mainWindow.on("close", (event) => {
+    if (!forceCloseForActiveDownloads) {
+      const activeCount = downloads.filter((item) => item.status === "in-progress").length;
+      if (activeCount > 0) {
+        event.preventDefault();
+        const choice = dialog.showMessageBoxSync(mainWindow!, {
+          type: "warning",
+          title: "Active Downloads",
+          message: activeCount === 1 ? "1 download is currently in progress." : `${activeCount} downloads are currently in progress.`,
+          detail: "Exiting now will cancel active downloads. What would you like to do?",
+          buttons: ["Keep Browser Open", "Exit and Cancel Downloads"],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true
+        });
+
+        if (choice === 1) {
+          forceCloseForActiveDownloads = true;
+          persistSession();
+          sessionSaved = true;
+          mainWindow?.close();
+        }
+        return;
+      }
+    }
     persistSession();
     sessionSaved = true;
   });
