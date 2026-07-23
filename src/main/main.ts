@@ -21,6 +21,7 @@ let browserBounds: BrowserBounds | null = null;
 let activeTabId = "";
 let libraryVisible = false;
 let isRestoringSession = false;
+let sessionSaved = false;
 let dataStore: BrowserDataStore;
 let downloads: StoredDownload[] = [];
 const tabs = new Map<string, TabRecord>();
@@ -135,7 +136,7 @@ function sessionSnapshot(): SessionSnapshot {
 }
 
 function persistSession(): void {
-  if (dataStore && !isRestoringSession) dataStore.saveSession(sessionSnapshot());
+  if (dataStore && !isRestoringSession && !sessionSaved) dataStore.saveSession(sessionSnapshot());
 }
 
 function releaseView(record: TabRecord): void {
@@ -447,12 +448,16 @@ function buildApplicationMenu(): void {
 }
 
 function createWindow(): void {
+  sessionSaved = false;
   mainWindow = new BrowserWindow({
     width: 1240, height: 820, minWidth: 760, minHeight: 540, title: "Lily Browser", backgroundColor: "#f7f7f8", show: false,
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   mainWindow.once("ready-to-show", () => mainWindow?.show());
-  mainWindow.on("close", () => persistSession());
+  mainWindow.on("close", () => {
+    persistSession();
+    sessionSaved = true;
+  });
   mainWindow.on("closed", () => {
     mainWindow = null;
     browserBounds = null;
