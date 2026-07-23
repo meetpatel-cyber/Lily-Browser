@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-type IconName = "back" | "forward" | "reload" | "home" | "plus" | "close" | "search" | "globe" | "star" | "library" | "history" | "download" | "trash" | "folder" | "open" | "pause" | "play";
+type IconName = "back" | "forward" | "reload" | "home" | "plus" | "close" | "search" | "globe" | "star" | "library" | "history" | "download" | "trash" | "folder" | "open" | "pause" | "play" | "lock" | "lock-open";
 
 const paths: Record<IconName, ReactNode> = {
   back: <path d="m15 18-6-6 6-6" />,
@@ -19,7 +19,9 @@ const paths: Record<IconName, ReactNode> = {
   folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />,
   open: <path d="M14 4h6v6m0-6-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" />,
   pause: <path d="M6 4h4v16H6zm8 0h4v16h-4z" />,
-  play: <polygon points="5 3 19 12 5 21 5 3" />
+  play: <polygon points="5 3 19 12 5 21 5 3" />,
+  lock: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>,
+  "lock-open": <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" /></>
 };
 
 export function Icon({ name, size = 18, filled = false }: { name: IconName; size?: number; filled?: boolean }) {

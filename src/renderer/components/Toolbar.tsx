@@ -3,6 +3,7 @@ import { Icon } from "./Icon";
 
 interface ToolbarProps {
   address: string;
+  activeUrl?: string;
   isLoading: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
@@ -27,7 +28,31 @@ function NavigationButton({ label, disabled, onClick, children }: { label: strin
   );
 }
 
-export function Toolbar({ address, isLoading, canGoBack, canGoForward, addressRef, onAddressChange, onSubmit, onBack, onForward, onReload, onHome, canBookmark, isBookmarked, onToggleBookmark, onOpenLibrary }: ToolbarProps) {
+function SecurityIcon({ url }: { url?: string }) {
+  if (!url) return <Icon name="search" size={17} />;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "https:") {
+      return (
+        <span className="address-form__security address-form__security--secure" title="Connection is secure (HTTPS)" aria-label="Connection is secure">
+          <Icon name="lock" size={16} />
+        </span>
+      );
+    }
+    if (parsed.protocol === "http:") {
+      return (
+        <span className="address-form__security address-form__security--not-secure" title="Connection is not secure (HTTP)" aria-label="Connection is not secure">
+          <Icon name="lock-open" size={16} />
+        </span>
+      );
+    }
+  } catch {
+    // Neutral fallback
+  }
+  return <Icon name="search" size={17} />;
+}
+
+export function Toolbar({ address, activeUrl, isLoading, canGoBack, canGoForward, addressRef, onAddressChange, onSubmit, onBack, onForward, onReload, onHome, canBookmark, isBookmarked, onToggleBookmark, onOpenLibrary }: ToolbarProps) {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     onSubmit();
@@ -42,7 +67,7 @@ export function Toolbar({ address, isLoading, canGoBack, canGoForward, addressRe
         <NavigationButton label="Home (Alt+Home)" onClick={onHome}><Icon name="home" /></NavigationButton>
       </div>
       <form className="address-form" onSubmit={submit}>
-        <Icon name="search" size={17} />
+        <SecurityIcon url={activeUrl} />
         <input
           ref={addressRef}
           aria-label="Search or enter web address"

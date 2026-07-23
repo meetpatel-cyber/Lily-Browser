@@ -63,6 +63,9 @@ button { -webkit-app-region: no-drag; }
 .address-form input { flex: 1; min-width: 0; color: #292a2e; background: transparent; border: 0; outline: 0; font-size: 13px; }
 .address-form input::placeholder { color: #858891; }
 .address-form__loading { width: 13px; height: 13px; border: 2px solid #c7c9cd; border-right-color: #6366f1; border-radius: 50%; animation: spin 700ms linear infinite; }
+.address-form__security { display: grid; place-items: center; flex: 0 0 auto; color: #777b83; }
+.address-form__security--secure { color: #16a34a; }
+.address-form__security--not-secure { color: #d97706; }
 
 .browser-surface { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; background: #fff; }
 .new-tab-page { position: absolute; inset: 0; display: grid; place-items: center; padding: 32px; background: #fff; }
