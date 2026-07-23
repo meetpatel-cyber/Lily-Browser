@@ -1,0 +1,253 @@
+import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import type { Bookmark, DownloadRecord, DownloadStatus, HistoryEntry } from "../shared/browser";
+
+const DATA_VERSION = 1;
+const MAX_BOOKMARKS = 500;
+const MAX_HISTORY_ENTRIES = 1_000;
+const MAX_DOWNLOADS = 100;
+const MAX_SESSION_TABS = 20;
+
+export interface SessionSnapshot {
+  tabs: Array<{ url: string }>;
+  activeIndex: number;
+}
+
+export interface StoredDownload extends DownloadRecord {
+  savePath?: string;
+}
+
+interface StoredBrowserData {
+  version: number;
+  bookmarks: Bookmark[];
+  history: HistoryEntry[];
+  downloads: StoredDownload[];
+  session: SessionSnapshot;
+}
+
+function emptyData(): StoredBrowserData {
+  return {
+    version: DATA_VERSION,
+    bookmarks: [],
+    history: [],
+    downloads: [],
+    session: { tabs: [], activeIndex: 0 }
+  };
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isHttpUrl(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 8_192) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function readText(value: unknown, fallback: string, maxLength = 512): string {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, maxLength) : fallback;
+}
+
+function readTimestamp(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function readBytes(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+}
+
+function readStatus(value: unknown): DownloadStatus | undefined {
+  return value === "in-progress" || value === "completed" || value === "cancelled" || value === "failed" ? value : undefined;
+}
+
+function sanitizeBookmarks(value: unknown): Bookmark[] {
+  if (!Array.isArray(value)) return [];
+  const seenUrls = new Set<string>();
+  return value.reduce<Bookmark[]>((bookmarks, item) => {
+    if (!isObject(item) || !isHttpUrl(item.url) || seenUrls.has(item.url)) return bookmarks;
+    seenUrls.add(item.url);
+    bookmarks.push({
+      id: readText(item.id, randomUUID(), 128),
+      url: item.url,
+      title: readText(item.title, item.url),
+      createdAt: readTimestamp(item.createdAt, Date.now())
+    });
+    return bookmarks;
+  }, []).slice(0, MAX_BOOKMARKS);
+}
+
+function sanitizeHistory(value: unknown): HistoryEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.reduce<HistoryEntry[]>((history, item) => {
+    if (!isObject(item) || !isHttpUrl(item.url)) return history;
+    history.push({
+      id: readText(item.id, randomUUID(), 128),
+      url: item.url,
+      title: readText(item.title, item.url),
+      visitedAt: readTimestamp(item.visitedAt, Date.now())
+    });
+    return history;
+  }, []).slice(0, MAX_HISTORY_ENTRIES);
+}
+
+function sanitizeDownloads(value: unknown): StoredDownload[] {
+  if (!Array.isArray(value)) return [];
+  return value.reduce<StoredDownload[]>((downloads, item) => {
+    if (!isObject(item) || !isHttpUrl(item.url)) return downloads;
+    const status = readStatus(item.status);
+    if (!status || status === "in-progress") return downloads;
+    downloads.push({
+      id: readText(item.id, randomUUID(), 128),
+      filename: readText(item.filename, "download", 512),
+      url: item.url,
+      receivedBytes: readBytes(item.receivedBytes),
+      totalBytes: readBytes(item.totalBytes),
+      status,
+      startedAt: readTimestamp(item.startedAt, Date.now()),
+      completedAt: typeof item.completedAt === "number" ? readTimestamp(item.completedAt, Date.now()) : undefined,
+      error: typeof item.error === "string" ? item.error.slice(0, 512) : undefined,
+      savePath: typeof item.savePath === "string" && item.savePath.length < 4_096 ? item.savePath : undefined
+    });
+    return downloads;
+  }, []).slice(0, MAX_DOWNLOADS);
+}
+
+function sanitizeSession(value: unknown): SessionSnapshot {
+  if (!isObject(value) || !Array.isArray(value.tabs)) return { tabs: [], activeIndex: 0 };
+  const tabs = value.tabs.reduce<Array<{ url: string }>>((sessionTabs, item) => {
+    if (!isObject(item)) return sessionTabs;
+    if (item.url === "" || isHttpUrl(item.url)) {
+      sessionTabs.push({ url: item.url });
+    }
+    return sessionTabs;
+  }, []).slice(0, MAX_SESSION_TABS);
+  const requestedIndex = typeof value.activeIndex === "number" && Number.isInteger(value.activeIndex) ? value.activeIndex : 0;
+  return { tabs, activeIndex: Math.max(0, Math.min(requestedIndex, Math.max(0, tabs.length - 1))) };
+}
+
+function sanitizeData(value: unknown): StoredBrowserData {
+  if (!isObject(value) || value.version !== DATA_VERSION) return emptyData();
+  return {
+    version: DATA_VERSION,
+    bookmarks: sanitizeBookmarks(value.bookmarks),
+    history: sanitizeHistory(value.history),
+    downloads: sanitizeDownloads(value.downloads),
+    session: sanitizeSession(value.session)
+  };
+}
+
+export class BrowserDataStore {
+  private readonly filePath: string;
+  private data: StoredBrowserData;
+
+  constructor(userDataPath: string) {
+    this.filePath = path.join(userDataPath, "lily-browser-data.json");
+    this.data = this.read();
+  }
+
+  getBookmarks(): Bookmark[] {
+    return this.data.bookmarks.map((bookmark) => ({ ...bookmark }));
+  }
+
+  getHistory(): HistoryEntry[] {
+    return this.data.history.map((entry) => ({ ...entry }));
+  }
+
+  getDownloads(): StoredDownload[] {
+    return this.data.downloads.map((download) => ({ ...download }));
+  }
+
+  getSession(): SessionSnapshot {
+    return { activeIndex: this.data.session.activeIndex, tabs: this.data.session.tabs.map((tab) => ({ ...tab })) };
+  }
+
+  toggleBookmark(url: string, title: string): boolean {
+    const existingIndex = this.data.bookmarks.findIndex((bookmark) => bookmark.url === url);
+    if (existingIndex >= 0) {
+      this.data.bookmarks.splice(existingIndex, 1);
+      this.persist();
+      return false;
+    }
+    this.data.bookmarks.unshift({ id: randomUUID(), url, title: readText(title, url), createdAt: Date.now() });
+    this.data.bookmarks = this.data.bookmarks.slice(0, MAX_BOOKMARKS);
+    this.persist();
+    return true;
+  }
+
+  removeBookmark(bookmarkId: string): void {
+    const next = this.data.bookmarks.filter((bookmark) => bookmark.id !== bookmarkId);
+    if (next.length !== this.data.bookmarks.length) {
+      this.data.bookmarks = next;
+      this.persist();
+    }
+  }
+
+  recordHistory(url: string, title: string): HistoryEntry {
+    const entry: HistoryEntry = { id: randomUUID(), url, title: readText(title, url), visitedAt: Date.now() };
+    this.data.history.unshift(entry);
+    this.data.history = this.data.history.slice(0, MAX_HISTORY_ENTRIES);
+    this.persist();
+    return { ...entry };
+  }
+
+  updateHistoryTitle(historyId: string, title: string): void {
+    const entry = this.data.history.find((item) => item.id === historyId);
+    if (!entry || entry.title === title) return;
+    entry.title = readText(title, entry.url);
+    this.persist();
+  }
+
+  clearHistory(): void {
+    if (this.data.history.length > 0) {
+      this.data.history = [];
+      this.persist();
+    }
+  }
+
+  saveDownloads(downloads: StoredDownload[]): void {
+    this.data.downloads = downloads
+      .filter((download) => download.status !== "in-progress")
+      .slice(0, MAX_DOWNLOADS)
+      .map((download) => ({ ...download }));
+    this.persist();
+  }
+
+  saveSession(session: SessionSnapshot): void {
+    this.data.session = sanitizeSession(session);
+    this.persist();
+  }
+
+  private read(): StoredBrowserData {
+    if (!existsSync(this.filePath)) return emptyData();
+    try {
+      return sanitizeData(JSON.parse(readFileSync(this.filePath, "utf8")));
+    } catch {
+      try {
+        renameSync(this.filePath, `${this.filePath}.corrupt-${Date.now()}`);
+      } catch {
+        // A read-only or locked corrupt file should not prevent the browser from starting.
+      }
+      return emptyData();
+    }
+  }
+
+  private persist(): void {
+    const temporaryPath = `${this.filePath}.tmp`;
+    try {
+      writeFileSync(temporaryPath, JSON.stringify(this.data), "utf8");
+      renameSync(temporaryPath, this.filePath);
+    } catch {
+      try {
+        if (existsSync(temporaryPath)) renameSync(temporaryPath, `${temporaryPath}.failed-${Date.now()}`);
+      } catch {
+        // Persistence failure must not interrupt navigation or downloads.
+      }
+    }
+  }
+}

@@ -1,0 +1,36 @@
+import type { BrowserTab } from "../../shared/browser";
+import { Icon } from "./Icon";
+
+interface TabStripProps {
+  tabs: BrowserTab[];
+  activeTabId: string;
+  onSelect: (tabId: string) => void;
+  onClose: (tabId: string) => void;
+  onCreate: () => void;
+}
+
+export function TabStrip({ tabs, activeTabId, onSelect, onClose, onCreate }: TabStripProps) {
+  return (
+    <div className="tab-strip" aria-label="Browser tabs">
+      <div className="tab-list" role="tablist" aria-label="Open tabs">
+        {tabs.map((tab) => (
+          <div key={tab.id} className={`tab ${tab.id === activeTabId ? "tab--active" : ""}`} role="presentation">
+            <button className="tab__target" role="tab" aria-selected={tab.id === activeTabId} onClick={() => onSelect(tab.id)} title={tab.title}>
+              <span className="tab__status" aria-hidden="true">
+                {tab.isLoading ? <span className="loading-dot" /> : <Icon name={tab.isNewTab ? "globe" : "search"} size={15} />}
+              </span>
+              <span className="tab__title">{tab.title}</span>
+            </button>
+            <button className="tab__close" type="button" aria-label={`Close ${tab.title}`} title="Close tab" onClick={() => onClose(tab.id)}>
+              <Icon name="close" size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <button className="new-tab-button" type="button" aria-label="New tab" title="New tab (Ctrl+T)" onClick={onCreate}>
+        <Icon name="plus" size={18} />
+      </button>
+    </div>
+  );
+}
+
