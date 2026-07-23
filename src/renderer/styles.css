@@ -114,6 +114,7 @@ button { -webkit-app-region: no-drag; }
 .download-actions { display: flex; align-items: center; }
 .download-progress { width: 74px; height: 4px; margin-left: 10px; overflow: hidden; background: #ebebee; border-radius: 999px; }
 .download-progress i { display: block; height: 100%; background: #6366f1; border-radius: inherit; transition: width 180ms ease; }
+.download-progress--paused i { background: #9fa2b4; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 

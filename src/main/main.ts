@@ -29,6 +29,27 @@ const recentHistoryUrls = new Map<string, number>();
 
 const isDevelopment = Boolean(process.env.ELECTRON_RENDERER_URL);
 
+interface ActiveDownloadTracker {
+  item: Electron.DownloadItem;
+  lastBytes: number;
+  lastTime: number;
+}
+
+const activeDownloads = new Map<string, ActiveDownloadTracker>();
+
+function formatSpeed(bytesPerSec: number): string {
+  if (bytesPerSec <= 0 || !Number.isFinite(bytesPerSec)) return "";
+  if (bytesPerSec < 1024) return `${Math.round(bytesPerSec)} B/s`;
+  const units = ["KB/s", "MB/s", "GB/s"];
+  let value = bytesPerSec / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
+}
+
 function toPublicDownload(download: StoredDownload): DownloadRecord {
   return {
     id: download.id,
@@ -39,7 +60,10 @@ function toPublicDownload(download: StoredDownload): DownloadRecord {
     status: download.status,
     startedAt: download.startedAt,
     completedAt: download.completedAt,
-    error: download.error
+    error: download.error,
+    speed: download.status === "in-progress" && !download.isPaused ? download.speed : undefined,
+    isPaused: download.isPaused,
+    canResume: download.canResume
   };
 }
 
@@ -343,30 +367,72 @@ function commandFromInput(input: Electron.Input): BrowserCommand | undefined {
 
 function registerDownloadHandler(): void {
   session.defaultSession.on("will-download", (_event, item) => {
+    const downloadId = randomUUID();
+    const now = Date.now();
     const download: StoredDownload = {
-      id: randomUUID(),
+      id: downloadId,
       filename: item.getFilename() || "download",
       url: item.getURL(),
       receivedBytes: item.getReceivedBytes(),
       totalBytes: item.getTotalBytes(),
       status: "in-progress",
-      startedAt: Date.now()
+      startedAt: now,
+      isPaused: false,
+      canResume: item.canResume()
     };
+
+    activeDownloads.set(downloadId, {
+      item,
+      lastBytes: item.getReceivedBytes(),
+      lastTime: now
+    });
+
     downloads.unshift(download);
     publishState();
+
     item.on("updated", (_updateEvent, state) => {
+      const tracker = activeDownloads.get(downloadId);
       download.receivedBytes = item.getReceivedBytes();
       download.totalBytes = item.getTotalBytes();
-      if (state === "interrupted") download.error = "Download interrupted; Chromium is attempting to resume it.";
+      download.isPaused = item.isPaused();
+      download.canResume = item.canResume();
+
+      if (tracker && !download.isPaused && state !== "interrupted") {
+        const currentTime = Date.now();
+        const deltaTime = (currentTime - tracker.lastTime) / 1000;
+        if (deltaTime >= 0.5) {
+          const deltaBytes = download.receivedBytes - tracker.lastBytes;
+          if (deltaBytes >= 0 && deltaTime > 0) {
+            download.speed = formatSpeed(deltaBytes / deltaTime);
+          }
+          tracker.lastBytes = download.receivedBytes;
+          tracker.lastTime = currentTime;
+        }
+      } else {
+        download.speed = undefined;
+      }
+
+      if (state === "interrupted") {
+        download.error = "Download interrupted; Chromium is attempting to resume it.";
+      } else if (download.error && !download.isPaused) {
+        download.error = undefined;
+      }
       publishState();
     });
+
     item.once("done", (_doneEvent, state) => {
+      activeDownloads.delete(downloadId);
       download.receivedBytes = item.getReceivedBytes();
       download.totalBytes = item.getTotalBytes();
       download.completedAt = Date.now();
+      download.speed = undefined;
+      download.isPaused = false;
+      download.canResume = false;
+
       if (state === "completed") {
         download.status = "completed";
         download.savePath = item.getSavePath();
+        download.error = undefined;
       } else if (state === "cancelled") {
         download.status = "cancelled";
         download.error = "Download cancelled.";
@@ -378,6 +444,42 @@ function registerDownloadHandler(): void {
       publishState();
     });
   });
+}
+
+function pauseDownload(downloadId: string): void {
+  const tracker = activeDownloads.get(downloadId);
+  if (tracker && !tracker.item.isPaused()) {
+    tracker.item.pause();
+    const download = downloads.find((item) => item.id === downloadId);
+    if (download) {
+      download.isPaused = true;
+      download.canResume = tracker.item.canResume();
+      download.speed = undefined;
+      publishState();
+    }
+  }
+}
+
+function resumeDownload(downloadId: string): void {
+  const tracker = activeDownloads.get(downloadId);
+  if (tracker && tracker.item.isPaused() && tracker.item.canResume()) {
+    tracker.item.resume();
+    const download = downloads.find((item) => item.id === downloadId);
+    if (download) {
+      download.isPaused = false;
+      download.canResume = true;
+      tracker.lastBytes = tracker.item.getReceivedBytes();
+      tracker.lastTime = Date.now();
+      publishState();
+    }
+  }
+}
+
+function cancelDownload(downloadId: string): void {
+  const tracker = activeDownloads.get(downloadId);
+  if (tracker) {
+    tracker.item.cancel();
+  }
 }
 
 function updateDownloadError(download: StoredDownload, message: string): void {
@@ -497,6 +599,9 @@ function registerIpcHandlers(): void {
   });
   ipcMain.handle("browser:open-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) openCompletedDownload(downloadId); });
   ipcMain.handle("browser:reveal-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) revealCompletedDownload(downloadId); });
+  ipcMain.handle("browser:pause-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) pauseDownload(downloadId); });
+  ipcMain.handle("browser:resume-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) resumeDownload(downloadId); });
+  ipcMain.handle("browser:cancel-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) cancelDownload(downloadId); });
   ipcMain.on("browser:set-library-visible", (_event, visible: unknown) => {
     if (typeof visible === "boolean") {
       libraryVisible = visible;

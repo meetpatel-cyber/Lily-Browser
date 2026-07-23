@@ -15,6 +15,9 @@ interface LibraryPanelProps {
   onClearHistory: () => void;
   onOpenDownload: (downloadId: string) => void;
   onRevealDownload: (downloadId: string) => void;
+  onPauseDownload: (downloadId: string) => void;
+  onResumeDownload: (downloadId: string) => void;
+  onCancelDownload: (downloadId: string) => void;
 }
 
 function relativeTime(timestamp: number): string {
@@ -82,11 +85,29 @@ function downloadStatus(download: DownloadRecord): string {
   if (download.status === "completed") return `${formatBytes(download.receivedBytes)} · Complete`;
   if (download.status === "cancelled") return "Cancelled";
   if (download.status === "failed") return "Failed";
-  if (download.totalBytes > 0) return `${formatBytes(download.receivedBytes)} of ${formatBytes(download.totalBytes)}`;
-  return `${formatBytes(download.receivedBytes)} downloaded`;
+
+  if (download.isPaused) {
+    if (download.totalBytes > 0) return `Paused · ${formatBytes(download.receivedBytes)} of ${formatBytes(download.totalBytes)}`;
+    return `Paused · ${formatBytes(download.receivedBytes)}`;
+  }
+
+  const parts: string[] = [];
+  if (download.totalBytes > 0) {
+    const pct = Math.min(100, Math.floor((download.receivedBytes / download.totalBytes) * 100));
+    parts.push(`${pct}%`);
+    parts.push(`${formatBytes(download.receivedBytes)} of ${formatBytes(download.totalBytes)}`);
+  } else {
+    parts.push(`${formatBytes(download.receivedBytes)} downloaded`);
+  }
+
+  if (download.speed) {
+    parts.push(download.speed);
+  }
+
+  return parts.join(" · ");
 }
 
-function DownloadList({ downloads, onOpenDownload, onRevealDownload }: Pick<LibraryPanelProps, "downloads" | "onOpenDownload" | "onRevealDownload">) {
+function DownloadList({ downloads, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload }: Pick<LibraryPanelProps, "downloads" | "onOpenDownload" | "onRevealDownload" | "onPauseDownload" | "onResumeDownload" | "onCancelDownload">) {
   if (downloads.length === 0) return <EmptyState>Downloads started from websites will appear here.</EmptyState>;
   return (
     <div className="library-list">
@@ -94,7 +115,25 @@ function DownloadList({ downloads, onOpenDownload, onRevealDownload }: Pick<Libr
         <div className="library-entry library-entry--download" key={download.id}>
           <span className={`download-icon download-icon--${download.status}`}><Icon name="download" size={17} /></span>
           <span className="library-entry__download-copy"><strong title={download.filename}>{download.filename}</strong><small>{downloadStatus(download)}</small>{download.error && <em>{download.error}</em>}</span>
-          {download.status === "in-progress" && <span className="download-progress" aria-label="Download in progress"><i style={{ width: download.totalBytes ? `${Math.min(100, (download.receivedBytes / download.totalBytes) * 100)}%` : "35%" }} /></span>}
+          {download.status === "in-progress" && <span className={`download-progress ${download.isPaused ? "download-progress--paused" : ""}`} aria-label="Download in progress"><i style={{ width: download.totalBytes ? `${Math.min(100, (download.receivedBytes / download.totalBytes) * 100)}%` : "35%" }} /></span>}
+          {download.status === "in-progress" && (
+            <span className="download-actions">
+              {download.isPaused ? (
+                download.canResume && (
+                  <button className="library-entry__action" type="button" title="Resume download" aria-label={`Resume download ${download.filename}`} onClick={() => onResumeDownload(download.id)}>
+                    <Icon name="play" size={15} />
+                  </button>
+                )
+              ) : (
+                <button className="library-entry__action" type="button" title="Pause download" aria-label={`Pause download ${download.filename}`} onClick={() => onPauseDownload(download.id)}>
+                  <Icon name="pause" size={15} />
+                </button>
+              )}
+              <button className="library-entry__action" type="button" title="Cancel download" aria-label={`Cancel download ${download.filename}`} onClick={() => onCancelDownload(download.id)}>
+                <Icon name="close" size={15} />
+              </button>
+            </span>
+          )}
           {download.status === "completed" && <span className="download-actions">
             <button className="library-entry__action" type="button" title="Open downloaded file" aria-label={`Open ${download.filename}`} onClick={() => onOpenDownload(download.id)}><Icon name="open" size={16} /></button>
             <button className="library-entry__action" type="button" title="Show in folder" aria-label={`Show ${download.filename} in folder`} onClick={() => onRevealDownload(download.id)}><Icon name="folder" size={16} /></button>
@@ -105,7 +144,7 @@ function DownloadList({ downloads, onOpenDownload, onRevealDownload }: Pick<Libr
   );
 }
 
-export function LibraryPanel({ section, bookmarks, history, downloads, onSectionChange, onClose, onOpenUrl, onRemoveBookmark, onClearHistory, onOpenDownload, onRevealDownload }: LibraryPanelProps) {
+export function LibraryPanel({ section, bookmarks, history, downloads, onSectionChange, onClose, onOpenUrl, onRemoveBookmark, onClearHistory, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload }: LibraryPanelProps) {
   return (
     <section className="library-panel" aria-label="Library">
       <div className="library-panel__header">
@@ -122,7 +161,7 @@ export function LibraryPanel({ section, bookmarks, history, downloads, onSection
         </div>
         {section === "bookmarks" && <BookmarkList bookmarks={bookmarks} onOpenUrl={onOpenUrl} onRemoveBookmark={onRemoveBookmark} />}
         {section === "history" && <HistoryList history={history} onOpenUrl={onOpenUrl} />}
-        {section === "downloads" && <DownloadList downloads={downloads} onOpenDownload={onOpenDownload} onRevealDownload={onRevealDownload} />}
+        {section === "downloads" && <DownloadList downloads={downloads} onOpenDownload={onOpenDownload} onRevealDownload={onRevealDownload} onPauseDownload={onPauseDownload} onResumeDownload={onResumeDownload} onCancelDownload={onCancelDownload} />}
       </div>
     </section>
   );

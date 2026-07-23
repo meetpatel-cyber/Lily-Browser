@@ -59,4 +59,8 @@ export interface DownloadRecord {
   startedAt: number;
   completedAt?: number;
   error?: string;
+  speed?: string;
+  isPaused?: boolean;
+  canResume?: boolean;
 }
+

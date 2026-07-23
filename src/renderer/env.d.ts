@@ -16,6 +16,9 @@ declare global {
       clearHistory: () => Promise<void>;
       openDownload: (downloadId: string) => Promise<void>;
       revealDownload: (downloadId: string) => Promise<void>;
+      pauseDownload: (downloadId: string) => Promise<void>;
+      resumeDownload: (downloadId: string) => Promise<void>;
+      cancelDownload: (downloadId: string) => Promise<void>;
       setLibraryVisible: (visible: boolean) => void;
       setContentBounds: (bounds: BrowserBounds) => void;
       onStateChanged: (callback: (state: BrowserState) => void) => () => void;

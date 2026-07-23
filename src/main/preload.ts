@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld("lilyBrowser", {
   clearHistory: (): Promise<void> => ipcRenderer.invoke("browser:clear-history"),
   openDownload: (downloadId: string): Promise<void> => ipcRenderer.invoke("browser:open-download", downloadId),
   revealDownload: (downloadId: string): Promise<void> => ipcRenderer.invoke("browser:reveal-download", downloadId),
+  pauseDownload: (downloadId: string): Promise<void> => ipcRenderer.invoke("browser:pause-download", downloadId),
+  resumeDownload: (downloadId: string): Promise<void> => ipcRenderer.invoke("browser:resume-download", downloadId),
+  cancelDownload: (downloadId: string): Promise<void> => ipcRenderer.invoke("browser:cancel-download", downloadId),
   setLibraryVisible: (visible: boolean): void => ipcRenderer.send("browser:set-library-visible", visible),
   setContentBounds: (bounds: BrowserBounds): void => ipcRenderer.send("browser:set-content-bounds", bounds),
   onStateChanged: (callback: (state: BrowserState) => void): (() => void) => {
