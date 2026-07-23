@@ -10,6 +10,7 @@ interface TabRecord {
   view?: WebContentsView;
   lastHistoryVisit?: { id: string; url: string; recordedAt: number };
   lastFailedUrl?: string;
+  isShowingError?: boolean;
 }
 
 const MAX_URL_LENGTH = 8_192;
@@ -183,15 +184,198 @@ function releaseView(record: TabRecord): void {
   if (!view.webContents.isDestroyed()) view.webContents.close();
 }
 
-function showNavigationFailure(record: TabRecord, message: string): void {
+interface FriendlyError {
+  heading: string;
+  explanation: string;
+  guidance: string[];
+  isSecurity: boolean;
+  codeOrDesc: string;
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function formatNavigationError(rawMessage: string, errorCode?: number): FriendlyError {
+  const desc = (rawMessage || "").toUpperCase();
+  const codeStr = errorCode !== undefined ? `${rawMessage} (${errorCode})` : rawMessage;
+
+  if (desc.includes("ERR_NAME_NOT_RESOLVED") || desc.includes("ERR_NAME_AFTER_PARSE_FAIL") || errorCode === -105) {
+    return {
+      heading: "Server Not Found",
+      explanation: "Lily Browser couldn't find the server for this web address.",
+      guidance: [
+        "Check the address for typos",
+        "Verify your internet or Wi-Fi connection",
+        "Check if network DNS settings are working"
+      ],
+      isSecurity: false,
+      codeOrDesc: codeStr
+    };
+  }
+
+  if (desc.includes("ERR_CONNECTION_REFUSED") || errorCode === -102) {
+    return {
+      heading: "Unable to Connect",
+      explanation: "The server refused the connection request.",
+      guidance: [
+        "The web server may be offline or undergoing maintenance",
+        "Verify the port and address are correct",
+        "Try reloading in a few moments"
+      ],
+      isSecurity: false,
+      codeOrDesc: codeStr
+    };
+  }
+
+  if (desc.includes("ERR_INTERNET_DISCONNECTED") || desc.includes("ERR_NETWORK_CHANGED") || errorCode === -106 || errorCode === -21) {
+    return {
+      heading: "No Internet Connection",
+      explanation: "Your computer is currently offline.",
+      guidance: [
+        "Check your Wi-Fi, Ethernet cable, or router",
+        "Reconnect to your network and try again"
+      ],
+      isSecurity: false,
+      codeOrDesc: codeStr
+    };
+  }
+
+  if (desc.includes("ERR_CONNECTION_RESET") || desc.includes("ERR_INTERRUPTED") || errorCode === -101 || errorCode === -14) {
+    return {
+      heading: "Connection Interrupted",
+      explanation: "The connection to the server was reset while loading.",
+      guidance: [
+        "Check network stability",
+        "Try reloading the page"
+      ],
+      isSecurity: false,
+      codeOrDesc: codeStr
+    };
+  }
+
+  if (desc.includes("TIMED_OUT") || errorCode === -7 || errorCode === -118) {
+    return {
+      heading: "Connection Timed Out",
+      explanation: "The server took too long to respond.",
+      guidance: [
+        "The site may be experiencing high traffic",
+        "Try reloading the page later"
+      ],
+      isSecurity: false,
+      codeOrDesc: codeStr
+    };
+  }
+
+  if (desc.includes("ERR_ADDRESS_UNREACHABLE") || errorCode === -109) {
+    return {
+      heading: "Address Unreachable",
+      explanation: "The specified network address cannot be reached.",
+      guidance: [
+        "Verify network routing and internet access",
+        "Confirm the server address is available"
+      ],
+      isSecurity: false,
+      codeOrDesc: codeStr
+    };
+  }
+
+  if (desc.includes("ERR_CERT_") || desc.includes("SSL_PROTOCOL_ERROR") || (errorCode !== undefined && errorCode <= -200 && errorCode >= -299)) {
+    return {
+      heading: "Security Connection Failed",
+      explanation: "Lily Browser cannot establish a secure connection to this site.",
+      guidance: [
+        "The website's security certificate is invalid, expired, or untrusted",
+        "Your connection may not be private",
+        "Verify your device system date and time"
+      ],
+      isSecurity: true,
+      codeOrDesc: codeStr
+    };
+  }
+
+  return {
+    heading: "Page Unavailable",
+    explanation: rawMessage || "The requested webpage could not be loaded.",
+    guidance: [
+      "Check the web address for errors",
+      "Try reloading the page"
+    ],
+    isSecurity: false,
+    codeOrDesc: codeStr || "UNKNOWN_ERROR"
+  };
+}
+
+function renderErrorHtml(friendly: FriendlyError, failedUrl: string): string {
+  const iconSvg = friendly.isSecurity
+    ? '<rect x="5" y="11" width="14" height="10" rx="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" />'
+    : '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />';
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(friendly.heading)}</title>
+<style>
+  :root { color: #202124; background: #f7f7f8; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  body { display: grid; place-items: center; min-height: 100vh; margin: 0; padding: 24px; box-sizing: border-box; }
+  .card { max-width: 480px; width: 100%; background: #ffffff; border: 1px solid #e7e7e9; border-radius: 16px; padding: 32px 28px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); }
+  .icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 11px; background: #fff2f2; color: #dc2626; margin-bottom: 18px; }
+  .icon--security { background: #fff7ed; color: #d97706; }
+  h1 { margin: 0 0 8px; font-size: 20px; font-weight: 650; letter-spacing: -0.3px; color: #1f2937; }
+  .url { font-size: 12px; color: #6b7280; word-break: break-all; margin-bottom: 14px; font-family: ui-monospace, monospace; background: #f8fafc; padding: 6px 10px; border-radius: 6px; border: 1px solid #f1f5f9; }
+  p { margin: 0 0 16px; font-size: 13.5px; line-height: 1.5; color: #4b5563; }
+  ul { margin: 0 0 20px; padding-left: 18px; font-size: 13px; color: #4b5563; line-height: 1.55; }
+  li { margin-bottom: 4px; }
+  .tech { font-size: 11px; color: #9ca3af; border-top: 1px solid #f3f4f6; padding-top: 12px; margin-top: 18px; font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon ${friendly.isSecurity ? 'icon--security' : ''}">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        ${iconSvg}
+      </svg>
+    </div>
+    <h1>${escapeHtml(friendly.heading)}</h1>
+    ${failedUrl ? `<div class="url">${escapeHtml(failedUrl)}</div>` : ''}
+    <p>${escapeHtml(friendly.explanation)}</p>
+    <ul>
+      ${friendly.guidance.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+    </ul>
+    <div class="tech">Error code: ${escapeHtml(friendly.codeOrDesc)}</div>
+  </div>
+</body>
+</html>`;
+}
+
+function showNavigationFailure(record: TabRecord, rawMessage: string, errorCode?: number, validatedUrl?: string): void {
+  if (record.isShowingError) return;
+  record.isShowingError = true;
+
+  const failedUrl = (validatedUrl && isAllowedNavigation(validatedUrl)) ? validatedUrl : record.state.url;
+  record.state.url = failedUrl;
+  const friendly = formatNavigationError(rawMessage, errorCode);
   record.state.isLoading = false;
   record.state.favicon = undefined;
-  record.state.error = message;
-  record.state.title = "Page unavailable";
-  record.lastFailedUrl = record.state.url;
+  record.state.error = friendly.heading;
+  record.state.title = friendly.heading;
+  record.lastFailedUrl = failedUrl;
   updateNavigationAvailability(record);
   persistSession();
   publishState();
+
+  if (record.view && !record.view.webContents.isDestroyed()) {
+    const html = renderErrorHtml(friendly, failedUrl);
+    record.view.webContents
+      .executeJavaScript(`document.open(); document.write(${JSON.stringify(html)}); document.close(); true;`)
+      .catch(() => { /* error page DOM injection fallback */ });
+  }
 }
 
 function recordHistoryVisit(record: TabRecord): void {
@@ -229,10 +413,11 @@ function attachBrowserEvents(record: TabRecord, view: WebContentsView): void {
   contents.on("will-navigate", (event, url) => {
     if (!isAllowedNavigation(url)) {
       event.preventDefault();
-      showNavigationFailure(record, "Lily Browser only opens web addresses over HTTP or HTTPS.");
+      showNavigationFailure(record, "Lily Browser only opens web addresses over HTTP or HTTPS.", undefined, url);
     }
   });
   contents.on("did-start-loading", () => {
+    record.isShowingError = false;
     record.state.isLoading = true;
     record.state.favicon = undefined;
     if (record.lastFailedUrl !== record.state.url) record.state.error = undefined;
@@ -253,6 +438,7 @@ function attachBrowserEvents(record: TabRecord, view: WebContentsView): void {
     record.state.url = url;
     record.state.isNewTab = false;
     record.state.error = undefined;
+    record.isShowingError = false;
     if (record.lastFailedUrl !== url) record.lastFailedUrl = undefined;
     updateNavigationAvailability(record);
     persistSession();
@@ -267,8 +453,10 @@ function attachBrowserEvents(record: TabRecord, view: WebContentsView): void {
     publishState();
   });
   contents.on("did-finish-load", () => recordHistoryVisit(record));
-  contents.on("did-fail-load", (_event, errorCode, errorDescription, _validatedUrl, isMainFrame) => {
-    if (isMainFrame && errorCode !== -3) showNavigationFailure(record, errorDescription);
+  contents.on("did-fail-load", (_event, errorCode, errorDescription, validatedUrl, isMainFrame) => {
+    if (isMainFrame && errorCode !== -3 && errorDescription !== "ERR_ABORTED") {
+      showNavigationFailure(record, errorDescription, errorCode, validatedUrl);
+    }
   });
   contents.on("render-process-gone", () => showNavigationFailure(record, "The page process stopped unexpectedly."));
   contents.on("before-input-event", (event, input) => {
@@ -297,12 +485,15 @@ function navigateTab(tabId: string, url: string): void {
   if (!record || !isAllowedNavigation(url)) return;
   const view = ensureView(record);
   record.lastFailedUrl = undefined;
+  record.isShowingError = false;
   record.state = { ...record.state, url, title: fallbackTitle(url), favicon: undefined, isNewTab: false, isLoading: true, error: undefined };
   if (tabId === activeTabId) applyViewLayout();
   persistSession();
   publishState();
-  void view.webContents.loadURL(url).catch((error: Error) => {
-    if (!view.webContents.isDestroyed()) showNavigationFailure(record, error.message || "The page could not be loaded.");
+  void view.webContents.loadURL(url).catch(() => {
+    // Rejections here are expected when showNavigationFailure loads the data: error
+    // page, which aborts the original loadURL. The error is already handled by
+    // did-fail-load + showNavigationFailure, so we safely swallow this rejection.
   });
 }
 
@@ -368,7 +559,15 @@ function runBrowserCommand(command: BrowserCommand): void {
     case "close-tab": if (active) closeTab(active.state.id); break;
     case "back": if (active?.view?.webContents.canGoBack()) active.view.webContents.goBack(); break;
     case "forward": if (active?.view?.webContents.canGoForward()) active.view.webContents.goForward(); break;
-    case "reload": if (active?.view && !active.state.isNewTab) active.view.webContents.reload(); break;
+    case "reload":
+      if (active && !active.state.isNewTab) {
+        if (active.state.error && active.state.url) {
+          navigateTab(active.state.id, active.state.url);
+        } else if (active.view) {
+          active.view.webContents.reload();
+        }
+      }
+      break;
     case "home": if (active) openHome(active.state.id); break;
     case "focus-address": mainWindow?.webContents.send("browser:command", command); break;
   }

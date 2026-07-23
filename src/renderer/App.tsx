@@ -157,6 +157,7 @@ export default function App() {
         <Toolbar
           address={address}
           activeUrl={activeTab?.url}
+          hasError={Boolean(activeTab?.error)}
           isLoading={Boolean(activeTab?.isLoading)}
           canGoBack={Boolean(activeTab?.canGoBack)}
           canGoForward={Boolean(activeTab?.canGoForward)}

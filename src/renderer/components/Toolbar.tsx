@@ -4,6 +4,7 @@ import { Icon } from "./Icon";
 interface ToolbarProps {
   address: string;
   activeUrl?: string;
+  hasError: boolean;
   isLoading: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
@@ -28,8 +29,10 @@ function NavigationButton({ label, disabled, onClick, children }: { label: strin
   );
 }
 
-function SecurityIcon({ url }: { url?: string }) {
-  if (!url) return <Icon name="search" size={17} />;
+function SecurityIcon({ url, hasError }: { url?: string; hasError: boolean }) {
+  // On error pages, show neutral icon regardless of attempted URL scheme.
+  // No secure connection was established if navigation failed.
+  if (!url || hasError) return <Icon name="search" size={17} />;
   try {
     const parsed = new URL(url);
     if (parsed.protocol === "https:") {
@@ -52,7 +55,7 @@ function SecurityIcon({ url }: { url?: string }) {
   return <Icon name="search" size={17} />;
 }
 
-export function Toolbar({ address, activeUrl, isLoading, canGoBack, canGoForward, addressRef, onAddressChange, onSubmit, onBack, onForward, onReload, onHome, canBookmark, isBookmarked, onToggleBookmark, onOpenLibrary }: ToolbarProps) {
+export function Toolbar({ address, activeUrl, hasError, isLoading, canGoBack, canGoForward, addressRef, onAddressChange, onSubmit, onBack, onForward, onReload, onHome, canBookmark, isBookmarked, onToggleBookmark, onOpenLibrary }: ToolbarProps) {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     onSubmit();
@@ -67,7 +70,7 @@ export function Toolbar({ address, activeUrl, isLoading, canGoBack, canGoForward
         <NavigationButton label="Home (Alt+Home)" onClick={onHome}><Icon name="home" /></NavigationButton>
       </div>
       <form className="address-form" onSubmit={submit}>
-        <SecurityIcon url={activeUrl} />
+        <SecurityIcon url={activeUrl} hasError={hasError} />
         <input
           ref={addressRef}
           aria-label="Search or enter web address"
