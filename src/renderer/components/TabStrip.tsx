@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { BrowserTab } from "../../shared/browser";
 import { Icon } from "./Icon";
 
@@ -9,6 +10,20 @@ interface TabStripProps {
   onCreate: () => void;
 }
 
+function TabFavicon({ favicon, isNewTab }: { favicon?: string; isNewTab: boolean }) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [favicon]);
+
+  if (favicon && !failed && !isNewTab) {
+    return <img className="tab__favicon" src={favicon} alt="" onError={() => setFailed(true)} />;
+  }
+
+  return <Icon name={isNewTab ? "globe" : "search"} size={15} />;
+}
+
 export function TabStrip({ tabs, activeTabId, onSelect, onClose, onCreate }: TabStripProps) {
   return (
     <div className="tab-strip" aria-label="Browser tabs">
@@ -17,7 +32,7 @@ export function TabStrip({ tabs, activeTabId, onSelect, onClose, onCreate }: Tab
           <div key={tab.id} className={`tab ${tab.id === activeTabId ? "tab--active" : ""}`} role="presentation">
             <button className="tab__target" role="tab" aria-selected={tab.id === activeTabId} onClick={() => onSelect(tab.id)} title={tab.title}>
               <span className="tab__status" aria-hidden="true">
-                {tab.isLoading ? <span className="loading-dot" /> : <Icon name={tab.isNewTab ? "globe" : "search"} size={15} />}
+                {tab.isLoading ? <span className="loading-dot" /> : <TabFavicon favicon={tab.favicon} isNewTab={tab.isNewTab} />}
               </span>
               <span className="tab__title">{tab.title}</span>
             </button>

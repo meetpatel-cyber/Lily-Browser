@@ -11,6 +11,7 @@ export interface BrowserTab {
   id: string;
   title: string;
   url: string;
+  favicon?: string;
   isNewTab: boolean;
   isLoading: boolean;
   canGoBack: boolean;

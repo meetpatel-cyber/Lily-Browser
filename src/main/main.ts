@@ -98,6 +98,16 @@ function isAllowedNavigation(url: string): boolean {
   }
 }
 
+function isAllowedFaviconUrl(url: string): boolean {
+  if (typeof url !== "string" || !url || url.length > 8_192) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" || parsed.protocol === "data:";
+  } catch {
+    return false;
+  }
+}
+
 function fallbackTitle(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "") || "Untitled";
@@ -140,6 +150,7 @@ function makeNewTab(): TabRecord {
       id: randomUUID(),
       title: "New Tab",
       url: "",
+      favicon: undefined,
       isNewTab: true,
       isLoading: false,
       canGoBack: false,
@@ -174,6 +185,7 @@ function releaseView(record: TabRecord): void {
 
 function showNavigationFailure(record: TabRecord, message: string): void {
   record.state.isLoading = false;
+  record.state.favicon = undefined;
   record.state.error = message;
   record.state.title = "Page unavailable";
   record.lastFailedUrl = record.state.url;
@@ -222,6 +234,7 @@ function attachBrowserEvents(record: TabRecord, view: WebContentsView): void {
   });
   contents.on("did-start-loading", () => {
     record.state.isLoading = true;
+    record.state.favicon = undefined;
     if (record.lastFailedUrl !== record.state.url) record.state.error = undefined;
     publishState();
   });
@@ -229,6 +242,12 @@ function attachBrowserEvents(record: TabRecord, view: WebContentsView): void {
     record.state.isLoading = false;
     updateNavigationAvailability(record);
     publishState();
+  });
+  contents.on("page-favicon-updated", (_event, favicons) => {
+    if (Array.isArray(favicons) && favicons.length > 0 && isAllowedFaviconUrl(favicons[0])) {
+      record.state.favicon = favicons[0];
+      publishState();
+    }
   });
   const updateUrl = (_event: Electron.Event, url: string) => {
     record.state.url = url;
@@ -278,7 +297,7 @@ function navigateTab(tabId: string, url: string): void {
   if (!record || !isAllowedNavigation(url)) return;
   const view = ensureView(record);
   record.lastFailedUrl = undefined;
-  record.state = { ...record.state, url, title: fallbackTitle(url), isNewTab: false, isLoading: true, error: undefined };
+  record.state = { ...record.state, url, title: fallbackTitle(url), favicon: undefined, isNewTab: false, isLoading: true, error: undefined };
   if (tabId === activeTabId) applyViewLayout();
   persistSession();
   publishState();
@@ -329,7 +348,7 @@ function openHome(tabId: string): void {
   const record = tabs.get(tabId);
   if (!record) return;
   releaseView(record);
-  record.state = { ...record.state, title: "New Tab", url: "", isNewTab: true, isLoading: false, canGoBack: false, canGoForward: false, error: undefined };
+  record.state = { ...record.state, title: "New Tab", url: "", favicon: undefined, isNewTab: true, isLoading: false, canGoBack: false, canGoForward: false, error: undefined };
   persistSession();
   if (tabId === activeTabId) syncVisibleState();
   else publishState();
