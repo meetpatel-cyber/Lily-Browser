@@ -288,6 +288,7 @@ function navigateTab(tabId: string, url: string): void {
 }
 
 function createTab(url?: string, activate = true): string {
+  libraryVisible = false;
   const record = makeNewTab();
   tabs.set(record.state.id, record);
   if (activate || !activeTabId) activeTabId = record.state.id;
@@ -301,6 +302,7 @@ function createTab(url?: string, activate = true): string {
 
 function selectTab(tabId: string): void {
   if (!tabs.has(tabId)) return;
+  libraryVisible = false;
   activeTabId = tabId;
   persistSession();
   syncVisibleState();

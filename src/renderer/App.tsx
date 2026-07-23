@@ -71,6 +71,29 @@ export default function App() {
     window.lilyBrowser.setLibraryVisible(true);
   }, []);
 
+  const toggleLibrary = useCallback((section: LibrarySection = "bookmarks") => {
+    if (librarySection) {
+      closeLibrary();
+    } else {
+      openLibrary(section);
+    }
+  }, [closeLibrary, librarySection, openLibrary]);
+
+  const handleCreateTab = useCallback(() => {
+    closeLibrary();
+    void window.lilyBrowser.createTab();
+  }, [closeLibrary]);
+
+  const handleSelectTab = useCallback((tabId: string) => {
+    closeLibrary();
+    void window.lilyBrowser.selectTab(tabId);
+  }, [closeLibrary]);
+
+  const handleHome = useCallback(() => {
+    closeLibrary();
+    executeCommand("home");
+  }, [closeLibrary, executeCommand]);
+
   const submitAddress = useCallback((value = address) => {
     if (!activeTab) return;
     const destination = toNavigationUrl(value);
@@ -93,7 +116,7 @@ export default function App() {
         void window.lilyBrowser.runCommand("focus-address");
       } else if (modifier && key === "t") {
         event.preventDefault();
-        executeCommand("new-tab");
+        handleCreateTab();
       } else if (modifier && key === "w") {
         event.preventDefault();
         executeCommand("close-tab");
@@ -111,7 +134,7 @@ export default function App() {
         executeCommand("forward");
       } else if (event.altKey && event.key === "Home") {
         event.preventDefault();
-        executeCommand("home");
+        handleHome();
       } else if (event.key === "Escape" && librarySection) {
         event.preventDefault();
         closeLibrary();
@@ -119,7 +142,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [closeLibrary, executeCommand, librarySection]);
+  }, [closeLibrary, executeCommand, handleCreateTab, handleHome, librarySection]);
 
   return (
     <main className="browser-shell">
@@ -127,9 +150,9 @@ export default function App() {
         <TabStrip
           tabs={browserState.tabs}
           activeTabId={browserState.activeTabId}
-          onSelect={(tabId) => void window.lilyBrowser.selectTab(tabId)}
+          onSelect={handleSelectTab}
           onClose={(tabId) => void window.lilyBrowser.closeTab(tabId)}
-          onCreate={() => void window.lilyBrowser.createTab()}
+          onCreate={handleCreateTab}
         />
         <Toolbar
           address={address}
@@ -142,11 +165,11 @@ export default function App() {
           onBack={() => executeCommand("back")}
           onForward={() => executeCommand("forward")}
           onReload={() => executeCommand("reload")}
-          onHome={() => executeCommand("home")}
+          onHome={handleHome}
           canBookmark={Boolean(activeTab && !activeTab.isNewTab && !activeTab.isLoading && !activeTab.error && activeTab.url)}
           isBookmarked={isBookmarked}
           onToggleBookmark={() => activeTab && void window.lilyBrowser.toggleBookmark(activeTab.id)}
-          onOpenLibrary={() => openLibrary()}
+          onOpenLibrary={() => toggleLibrary()}
         />
       </header>
       <section className="browser-surface" ref={browserSurfaceRef} aria-label="Browser content">
