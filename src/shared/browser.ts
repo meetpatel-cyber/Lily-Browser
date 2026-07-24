@@ -5,7 +5,15 @@ export type BrowserCommand =
   | "forward"
   | "reload"
   | "home"
-  | "focus-address";
+  | "focus-address"
+  | "find";
+
+export interface FindState {
+  visible: boolean;
+  text: string;
+  activeMatchOrdinal: number;
+  matches: number;
+}
 
 export interface BrowserTab {
   id: string;
@@ -17,6 +25,7 @@ export interface BrowserTab {
   canGoBack: boolean;
   canGoForward: boolean;
   error?: string;
+  findState?: FindState;
 }
 
 export interface BrowserState {

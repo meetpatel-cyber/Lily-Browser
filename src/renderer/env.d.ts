@@ -19,6 +19,9 @@ declare global {
       pauseDownload: (downloadId: string) => Promise<void>;
       resumeDownload: (downloadId: string) => Promise<void>;
       cancelDownload: (downloadId: string) => Promise<void>;
+      findInPage: (tabId: string, text: string, forward?: boolean, findNext?: boolean) => Promise<void>;
+      stopFindInPage: (tabId: string, keepSelection: boolean) => Promise<void>;
+      setFindVisible: (tabId: string, visible: boolean) => Promise<void>;
       setLibraryVisible: (visible: boolean) => void;
       setContentBounds: (bounds: BrowserBounds) => void;
       onStateChanged: (callback: (state: BrowserState) => void) => () => void;

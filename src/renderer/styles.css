@@ -128,6 +128,45 @@ button { -webkit-app-region: no-drag; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+.find-in-page {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 38px;
+  padding: 0 12px;
+  gap: 4px;
+  background: #f7f7f8;
+  border-top: 1px solid #e7e7e9;
+}
+.find-in-page__input {
+  width: 240px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #dedee2;
+  border-radius: 6px;
+  outline: 0;
+  background: #fff;
+  color: #28292d;
+  font-size: 13px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.find-in-page__input:focus {
+  border-color: #a5a6f7;
+  box-shadow: 0 0 0 3px rgb(99 102 241 / 13%);
+}
+.find-in-page__count {
+  color: #9799a0;
+  font-size: 12px;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+.find-in-page__divider {
+  width: 1px;
+  height: 20px;
+  background: #dedee2;
+  margin: 0 4px;
+}
+
 @media (max-width: 720px) {
   .tab { min-width: 82px; }
   .tab__close { display: none; }

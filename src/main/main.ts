@@ -11,11 +11,12 @@ interface TabRecord {
   lastHistoryVisit?: { id: string; url: string; recordedAt: number };
   lastFailedUrl?: string;
   isShowingError?: boolean;
+  currentFindRequestId?: number;
 }
 
 const MAX_URL_LENGTH = 8_192;
 const HISTORY_DEDUPLICATION_WINDOW = 15_000;
-const validCommands = new Set<BrowserCommand>(["new-tab", "close-tab", "back", "forward", "reload", "home", "focus-address"]);
+const validCommands = new Set<BrowserCommand>(["new-tab", "close-tab", "back", "forward", "reload", "home", "focus-address", "find"]);
 
 let mainWindow: BrowserWindow | null = null;
 let browserBounds: BrowserBounds | null = null;
@@ -416,6 +417,16 @@ function attachBrowserEvents(record: TabRecord, view: WebContentsView): void {
       showNavigationFailure(record, "Lily Browser only opens web addresses over HTTP or HTTPS.", undefined, url);
     }
   });
+  contents.on("did-start-navigation", (_event, _url, isInPlace, isMainFrame) => {
+    if (isMainFrame && !isInPlace) {
+      if (record.state.findState) {
+        contents.stopFindInPage("clearSelection");
+        record.state.findState = undefined;
+        record.currentFindRequestId = undefined;
+        publishState();
+      }
+    }
+  });
   contents.on("did-start-loading", () => {
     record.isShowingError = false;
     record.state.isLoading = true;
@@ -452,6 +463,13 @@ function attachBrowserEvents(record: TabRecord, view: WebContentsView): void {
     updateHistoryTitle(record);
     publishState();
   });
+  contents.on("found-in-page", (_event, result) => {
+    if (record.state.findState && record.currentFindRequestId !== undefined && result.requestId >= record.currentFindRequestId) {
+      record.state.findState.activeMatchOrdinal = result.activeMatchOrdinal;
+      record.state.findState.matches = result.matches;
+      publishState();
+    }
+  });
   contents.on("did-finish-load", () => recordHistoryVisit(record));
   contents.on("did-fail-load", (_event, errorCode, errorDescription, validatedUrl, isMainFrame) => {
     if (isMainFrame && errorCode !== -3 && errorDescription !== "ERR_ABORTED") {
@@ -486,7 +504,7 @@ function navigateTab(tabId: string, url: string): void {
   const view = ensureView(record);
   record.lastFailedUrl = undefined;
   record.isShowingError = false;
-  record.state = { ...record.state, url, title: fallbackTitle(url), favicon: undefined, isNewTab: false, isLoading: true, error: undefined };
+  record.state = { ...record.state, url, title: fallbackTitle(url), favicon: undefined, isNewTab: false, isLoading: true, error: undefined, findState: undefined };
   if (tabId === activeTabId) applyViewLayout();
   persistSession();
   publishState();
@@ -570,6 +588,7 @@ function runBrowserCommand(command: BrowserCommand): void {
       break;
     case "home": if (active) openHome(active.state.id); break;
     case "focus-address": mainWindow?.webContents.send("browser:command", command); break;
+    case "find": mainWindow?.webContents.send("browser:command", command); break;
   }
 }
 
@@ -578,6 +597,7 @@ function commandFromInput(input: Electron.Input): BrowserCommand | undefined {
   if (commandModifier && input.key.toLowerCase() === "t") return "new-tab";
   if (commandModifier && input.key.toLowerCase() === "w") return "close-tab";
   if (commandModifier && input.key.toLowerCase() === "l") return "focus-address";
+  if (commandModifier && input.key.toLowerCase() === "f") return "find";
   if (commandModifier && input.key.toLowerCase() === "r") return "reload";
   if (input.key === "F5") return "reload";
   if (input.alt && input.key === "Left") return "back";
@@ -852,6 +872,56 @@ function registerIpcHandlers(): void {
     if (typeof visible === "boolean") {
       libraryVisible = visible;
       applyViewLayout();
+    }
+  });
+  ipcMain.handle("browser:find-in-page", (_event, tabId: unknown, text: unknown, forward: unknown, findNext: unknown) => {
+    if (isIdentifier(tabId) && typeof text === "string" && typeof forward === "boolean" && typeof findNext === "boolean") {
+      const record = tabs.get(tabId);
+      if (record?.view) {
+        if (!record.state.findState) record.state.findState = { visible: true, text: "", activeMatchOrdinal: 0, matches: 0 };
+        record.state.findState.text = text;
+        if (findNext) {
+          record.state.findState.activeMatchOrdinal = 0;
+          record.state.findState.matches = 0;
+        }
+        const requestId = record.view.webContents.findInPage(text, { forward, findNext });
+        record.currentFindRequestId = requestId;
+        publishState();
+      }
+    }
+  });
+  ipcMain.handle("browser:stop-find-in-page", (_event, tabId: unknown, keepSelection: unknown) => {
+    if (isIdentifier(tabId) && typeof keepSelection === "boolean") {
+      const record = tabs.get(tabId);
+      if (record?.view) {
+        record.view.webContents.stopFindInPage(keepSelection ? "keepSelection" : "clearSelection");
+        record.currentFindRequestId = undefined;
+        if (record.state.findState) {
+          record.state.findState.text = "";
+          record.state.findState.activeMatchOrdinal = 0;
+          record.state.findState.matches = 0;
+          publishState();
+        }
+      }
+    }
+  });
+  ipcMain.handle("browser:set-find-visible", (_event, tabId: unknown, visible: unknown) => {
+    if (isIdentifier(tabId) && typeof visible === "boolean") {
+      const record = tabs.get(tabId);
+      if (record) {
+        if (!record.state.findState) record.state.findState = { visible: false, text: "", activeMatchOrdinal: 0, matches: 0 };
+        record.state.findState.visible = visible;
+        if (visible) {
+          mainWindow?.webContents.focus();
+        } else {
+          record.state.findState.text = "";
+          record.state.findState.activeMatchOrdinal = 0;
+          record.state.findState.matches = 0;
+          record.currentFindRequestId = undefined;
+          if (record.view) record.view.webContents.stopFindInPage("clearSelection");
+        }
+        publishState();
+      }
     }
   });
   ipcMain.on("browser:set-content-bounds", (_event, bounds: BrowserBounds) => {

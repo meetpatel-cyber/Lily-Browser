@@ -4,6 +4,7 @@ import { LibraryPanel, type LibrarySection } from "./components/LibraryPanel";
 import { NewTabPage } from "./components/NewTabPage";
 import { TabStrip } from "./components/TabStrip";
 import { Toolbar } from "./components/Toolbar";
+import { FindInPage } from "./components/FindInPage";
 import { addressLabel, toNavigationUrl } from "./lib/navigation";
 
 const emptyState: BrowserState = { tabs: [], activeTabId: "", bookmarks: [], history: [], downloads: [] };
@@ -14,9 +15,16 @@ export default function App() {
   const [librarySection, setLibrarySection] = useState<LibrarySection | null>(null);
   const browserSurfaceRef = useRef<HTMLElement | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
+  const findInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeTab = browserState.tabs.find((tab) => tab.id === browserState.activeTabId);
   const isBookmarked = Boolean(activeTab?.url && browserState.bookmarks.some((bookmark) => bookmark.url === activeTab.url));
+
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+
+  const librarySectionRef = useRef(librarySection);
+  librarySectionRef.current = librarySection;
 
   useEffect(() => {
     let live = true;
@@ -28,6 +36,16 @@ export default function App() {
       if (command === "focus-address") {
         addressInputRef.current?.focus();
         addressInputRef.current?.select();
+      } else if (command === "find") {
+        const active = activeTabRef.current;
+        if (active && !active.isNewTab && !librarySectionRef.current) {
+          if (!active.findState?.visible) {
+            void window.lilyBrowser.setFindVisible(active.id, true);
+          } else {
+            findInputRef.current?.focus();
+            findInputRef.current?.select();
+          }
+        }
       }
     });
     return () => {
@@ -135,6 +153,17 @@ export default function App() {
       } else if (event.altKey && event.key === "Home") {
         event.preventDefault();
         handleHome();
+      } else if (modifier && key === "f") {
+        event.preventDefault();
+        const active = activeTabRef.current;
+        if (active && !active.isNewTab && !librarySectionRef.current) {
+          if (!active.findState?.visible) {
+            void window.lilyBrowser.setFindVisible(active.id, true);
+          } else {
+            findInputRef.current?.focus();
+            findInputRef.current?.select();
+          }
+        }
       } else if (event.key === "Escape" && librarySection) {
         event.preventDefault();
         closeLibrary();
@@ -173,6 +202,14 @@ export default function App() {
           onToggleBookmark={() => activeTab && void window.lilyBrowser.toggleBookmark(activeTab.id)}
           onOpenLibrary={() => toggleLibrary()}
         />
+        {activeTab?.findState?.visible && (
+          <FindInPage 
+            tabId={activeTab.id} 
+            findState={activeTab.findState}
+            inputRef={findInputRef}
+            onClose={() => void window.lilyBrowser.setFindVisible(activeTab.id, false)} 
+          />
+        )}
       </header>
       <section className="browser-surface" ref={browserSurfaceRef} aria-label="Browser content">
         {librarySection ? <LibraryPanel
