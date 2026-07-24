@@ -6,7 +6,12 @@ export type BrowserCommand =
   | "reload"
   | "home"
   | "focus-address"
-  | "find";
+  | "find"
+  | "zoom-in"
+  | "zoom-out"
+  | "zoom-reset"
+  | "next-tab"
+  | "previous-tab";
 
 export interface FindState {
   visible: boolean;
@@ -26,6 +31,7 @@ export interface BrowserTab {
   canGoForward: boolean;
   error?: string;
   findState?: FindState;
+  zoomFactor?: number;
 }
 
 export interface BrowserState {

@@ -16,7 +16,7 @@ interface TabRecord {
 
 const MAX_URL_LENGTH = 8_192;
 const HISTORY_DEDUPLICATION_WINDOW = 15_000;
-const validCommands = new Set<BrowserCommand>(["new-tab", "close-tab", "back", "forward", "reload", "home", "focus-address", "find"]);
+const validCommands = new Set<BrowserCommand>(["new-tab", "close-tab", "back", "forward", "reload", "home", "focus-address", "find", "zoom-in", "zoom-out", "zoom-reset"]);
 
 let mainWindow: BrowserWindow | null = null;
 let browserBounds: BrowserBounds | null = null;
@@ -131,6 +131,9 @@ function updateNavigationAvailability(record: TabRecord): void {
 
 function applyViewLayout(): void {
   const active = activeRecord();
+  if (active?.view && active.state.zoomFactor !== undefined && active.state.zoomFactor !== active.view.webContents.zoomFactor) {
+    active.view.webContents.zoomFactor = active.state.zoomFactor;
+  }
   for (const record of tabs.values()) {
     record.view?.setVisible(record === active && !record.state.isNewTab && !libraryVisible);
   }
@@ -162,13 +165,13 @@ function makeNewTab(): TabRecord {
 }
 
 function sessionSnapshot(): SessionSnapshot {
-  const sessionTabs: Array<{ url: string }> = [];
+  const sessionTabs: Array<{ url: string; zoomFactor?: number }> = [];
   let activeIndex = 0;
   for (const record of tabs.values()) {
     const url = record.state.isNewTab ? "" : record.state.error || !isAllowedNavigation(record.state.url) ? undefined : record.state.url;
     if (url === undefined) continue;
     if (record.state.id === activeTabId) activeIndex = sessionTabs.length;
-    sessionTabs.push({ url });
+    sessionTabs.push({ url, zoomFactor: record.state.zoomFactor });
   }
   return { tabs: sessionTabs, activeIndex };
 }
@@ -451,6 +454,9 @@ function attachBrowserEvents(record: TabRecord, view: WebContentsView): void {
     record.state.error = undefined;
     record.isShowingError = false;
     if (record.lastFailedUrl !== url) record.lastFailedUrl = undefined;
+    if (record.state.zoomFactor !== undefined && record.state.zoomFactor !== contents.zoomFactor) {
+      contents.zoomFactor = record.state.zoomFactor;
+    }
     updateNavigationAvailability(record);
     persistSession();
     publishState();
@@ -492,6 +498,9 @@ function ensureView(record: TabRecord): WebContentsView {
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true }
   });
   record.view = view;
+  if (record.state.zoomFactor !== undefined) {
+    view.webContents.zoomFactor = record.state.zoomFactor;
+  }
   mainWindow?.contentView.addChildView(view);
   view.setVisible(false);
   attachBrowserEvents(record, view);
@@ -534,6 +543,12 @@ function selectTab(tabId: string): void {
   activeTabId = tabId;
   persistSession();
   syncVisibleState();
+  const record = tabs.get(tabId);
+  if (record?.view && !record.state.isNewTab) {
+    record.view.webContents.focus();
+  } else {
+    mainWindow?.webContents.focus();
+  }
 }
 
 function closeTab(tabId: string): void {
@@ -551,6 +566,12 @@ function closeTab(tabId: string): void {
   if (activeTabId === tabId) activeTabId = (orderedTabs[index - 1] ?? orderedTabs[index + 1]).state.id;
   persistSession();
   syncVisibleState();
+  const active = activeRecord();
+  if (active?.view && !active.state.isNewTab) {
+    active.view.webContents.focus();
+  } else {
+    mainWindow?.webContents.focus();
+  }
 }
 
 function openHome(tabId: string): void {
@@ -559,7 +580,10 @@ function openHome(tabId: string): void {
   releaseView(record);
   record.state = { ...record.state, title: "New Tab", url: "", favicon: undefined, isNewTab: true, isLoading: false, canGoBack: false, canGoForward: false, error: undefined };
   persistSession();
-  if (tabId === activeTabId) syncVisibleState();
+  if (tabId === activeTabId) {
+    syncVisibleState();
+    mainWindow?.webContents.focus();
+  }
   else publishState();
 }
 
@@ -570,6 +594,8 @@ function toggleBookmark(tabId: string): void {
   publishState();
 }
 
+const ZOOM_FACTORS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0];
+
 function runBrowserCommand(command: BrowserCommand): void {
   const active = activeRecord();
   switch (command) {
@@ -578,27 +604,68 @@ function runBrowserCommand(command: BrowserCommand): void {
     case "back": if (active?.view?.webContents.canGoBack()) active.view.webContents.goBack(); break;
     case "forward": if (active?.view?.webContents.canGoForward()) active.view.webContents.goForward(); break;
     case "reload":
-      if (active && !active.state.isNewTab) {
-        if (active.state.error && active.state.url) {
-          navigateTab(active.state.id, active.state.url);
-        } else if (active.view) {
+      if (active?.view) {
+        if (active.isShowingError && active.lastFailedUrl) {
+          navigateTab(active.state.id, active.lastFailedUrl);
+        } else {
           active.view.webContents.reload();
         }
       }
       break;
+    case "next-tab":
+    case "previous-tab": {
+      const orderedTabs = [...tabs.values()];
+      if (orderedTabs.length > 1) {
+        const index = orderedTabs.findIndex((record) => record.state.id === activeTabId);
+        if (index !== -1) {
+          const newIndex = command === "next-tab" 
+            ? (index + 1) % orderedTabs.length 
+            : (index - 1 + orderedTabs.length) % orderedTabs.length;
+          selectTab(orderedTabs[newIndex].state.id);
+        }
+      }
+      break;
+    }
     case "home": if (active) openHome(active.state.id); break;
     case "focus-address": mainWindow?.webContents.send("browser:command", command); break;
     case "find": mainWindow?.webContents.send("browser:command", command); break;
+    case "zoom-in":
+    case "zoom-out":
+    case "zoom-reset":
+      if (active?.view) {
+        let current = active.view.webContents.zoomFactor;
+        if (command === "zoom-reset") {
+          current = 1.0;
+        } else if (command === "zoom-in") {
+          const next = ZOOM_FACTORS.find(f => f > current + 0.01);
+          if (next) current = next;
+        } else if (command === "zoom-out") {
+          const prev = [...ZOOM_FACTORS].reverse().find(f => f < current - 0.01);
+          if (prev) current = prev;
+        }
+        active.view.webContents.zoomFactor = current;
+        active.state.zoomFactor = current;
+        publishState();
+        persistSession();
+      }
+      break;
   }
 }
 
 function commandFromInput(input: Electron.Input): BrowserCommand | undefined {
+  if (input.type !== "keyDown") return undefined;
   const commandModifier = input.control || input.meta;
-  if (commandModifier && input.key.toLowerCase() === "t") return "new-tab";
-  if (commandModifier && input.key.toLowerCase() === "w") return "close-tab";
-  if (commandModifier && input.key.toLowerCase() === "l") return "focus-address";
-  if (commandModifier && input.key.toLowerCase() === "f") return "find";
-  if (commandModifier && input.key.toLowerCase() === "r") return "reload";
+  if (commandModifier) {
+    if (input.key === "Tab") return input.shift ? "previous-tab" : "next-tab";
+    if (input.key.toLowerCase() === "t") return "new-tab";
+    if (input.key.toLowerCase() === "w") return "close-tab";
+    if (input.key.toLowerCase() === "l") return "focus-address";
+    if (input.key.toLowerCase() === "f") return "find";
+    if (input.key.toLowerCase() === "r") return "reload";
+    if (input.key === "=" || input.key === "+" || input.key === "NumpadAdd") return "zoom-in";
+    if (input.key === "-" || input.key === "NumpadSubtract") return "zoom-out";
+    if (input.key === "0" || input.key === "Numpad0") return "zoom-reset";
+  }
   if (input.key === "F5") return "reload";
   if (input.alt && input.key === "Left") return "back";
   if (input.alt && input.key === "Right") return "forward";
@@ -757,6 +824,7 @@ function restoreSession(): void {
   try {
     const records = restored.tabs.map((sessionTab) => {
       const record = makeNewTab();
+      if (sessionTab.zoomFactor) record.state.zoomFactor = sessionTab.zoomFactor;
       tabs.set(record.state.id, record);
       return { record, url: sessionTab.url };
     });
@@ -796,6 +864,13 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1240, height: 820, minWidth: 760, minHeight: 540, title: "Lily Browser", backgroundColor: "#f7f7f8", show: false,
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true }
+  });
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    const command = commandFromInput(input);
+    if (command) {
+      event.preventDefault();
+      runBrowserCommand(command);
+    }
   });
   mainWindow.once("ready-to-show", () => mainWindow?.show());
   mainWindow.on("close", (event) => {

@@ -10,7 +10,7 @@ const MAX_DOWNLOADS = 100;
 const MAX_SESSION_TABS = 20;
 
 export interface SessionSnapshot {
-  tabs: Array<{ url: string }>;
+  tabs: Array<{ url: string; zoomFactor?: number }>;
   activeIndex: number;
 }
 
@@ -120,10 +120,11 @@ function sanitizeDownloads(value: unknown): StoredDownload[] {
 
 function sanitizeSession(value: unknown): SessionSnapshot {
   if (!isObject(value) || !Array.isArray(value.tabs)) return { tabs: [], activeIndex: 0 };
-  const tabs = value.tabs.reduce<Array<{ url: string }>>((sessionTabs, item) => {
+  const tabs = value.tabs.reduce<Array<{ url: string; zoomFactor?: number }>>((sessionTabs, item) => {
     if (!isObject(item)) return sessionTabs;
     if (item.url === "" || isHttpUrl(item.url)) {
-      sessionTabs.push({ url: item.url });
+      const zoomFactor = typeof item.zoomFactor === "number" && Number.isFinite(item.zoomFactor) && item.zoomFactor > 0 ? item.zoomFactor : undefined;
+      sessionTabs.push({ url: item.url, zoomFactor });
     }
     return sessionTabs;
   }, []).slice(0, MAX_SESSION_TABS);

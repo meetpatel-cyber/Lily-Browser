@@ -127,44 +127,7 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const modifier = event.ctrlKey || event.metaKey;
-      const key = event.key.toLowerCase();
-      if (modifier && key === "l") {
-        event.preventDefault();
-        void window.lilyBrowser.runCommand("focus-address");
-      } else if (modifier && key === "t") {
-        event.preventDefault();
-        handleCreateTab();
-      } else if (modifier && key === "w") {
-        event.preventDefault();
-        executeCommand("close-tab");
-      } else if (modifier && key === "r") {
-        event.preventDefault();
-        executeCommand("reload");
-      } else if (event.key === "F5") {
-        event.preventDefault();
-        executeCommand("reload");
-      } else if (event.altKey && event.key === "ArrowLeft") {
-        event.preventDefault();
-        executeCommand("back");
-      } else if (event.altKey && event.key === "ArrowRight") {
-        event.preventDefault();
-        executeCommand("forward");
-      } else if (event.altKey && event.key === "Home") {
-        event.preventDefault();
-        handleHome();
-      } else if (modifier && key === "f") {
-        event.preventDefault();
-        const active = activeTabRef.current;
-        if (active && !active.isNewTab && !librarySectionRef.current) {
-          if (!active.findState?.visible) {
-            void window.lilyBrowser.setFindVisible(active.id, true);
-          } else {
-            findInputRef.current?.focus();
-            findInputRef.current?.select();
-          }
-        }
-      } else if (event.key === "Escape" && librarySection) {
+      if (event.key === "Escape" && librarySection) {
         event.preventDefault();
         closeLibrary();
       }

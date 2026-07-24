@@ -30,21 +30,19 @@ function NavigationButton({ label, disabled, onClick, children }: { label: strin
 }
 
 function SecurityIcon({ url, hasError }: { url?: string; hasError: boolean }) {
-  // On error pages, show neutral icon regardless of attempted URL scheme.
-  // No secure connection was established if navigation failed.
-  if (!url || hasError) return <Icon name="search" size={17} />;
+  if (!url) return <Icon name="search" size={17} />;
   try {
     const parsed = new URL(url);
-    if (parsed.protocol === "https:") {
+    if (parsed.protocol === "https:" && !hasError) {
       return (
         <span className="address-form__security address-form__security--secure" title="Connection is secure (HTTPS)" aria-label="Connection is secure">
           <Icon name="lock" size={16} />
         </span>
       );
     }
-    if (parsed.protocol === "http:") {
+    if (parsed.protocol === "http:" || (parsed.protocol === "https:" && hasError)) {
       return (
-        <span className="address-form__security address-form__security--not-secure" title="Connection is not secure (HTTP)" aria-label="Connection is not secure">
+        <span className="address-form__security address-form__security--not-secure" title="Connection is not secure" aria-label="Connection is not secure">
           <Icon name="lock-open" size={16} />
         </span>
       );
