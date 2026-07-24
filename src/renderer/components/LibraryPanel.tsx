@@ -20,17 +20,6 @@ interface LibraryPanelProps {
   onCancelDownload: (downloadId: string) => void;
 }
 
-function relativeTime(timestamp: number): string {
-  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1_000));
-  if (seconds < 60) return "Just now";
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return days === 1 ? "Yesterday" : `${days}d ago`;
-}
-
 function formatBytes(bytes: number): string {
   if (bytes < 1_024) return `${bytes} B`;
   const units = ["KB", "MB", "GB"];
@@ -64,17 +53,64 @@ function BookmarkList({ bookmarks, onOpenUrl, onRemoveBookmark }: Pick<LibraryPa
   );
 }
 
+const dateFormatter = new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" });
+const timeFormatter = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
+
 function HistoryList({ history, onOpenUrl }: Pick<LibraryPanelProps, "history" | "onOpenUrl">) {
   if (history.length === 0) return <EmptyState>Pages you visit will appear here.</EmptyState>;
+
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).getTime();
+
+  const groups: { label: string; entries: HistoryEntry[]; showTime: boolean }[] = [];
+
+  for (const entry of history) {
+    const d = new Date(entry.visitedAt);
+    const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+    let label = "";
+    let showTime = false;
+
+    if (dayStart === todayStart) {
+      label = "Today";
+      showTime = true;
+    } else if (dayStart === yesterdayStart) {
+      label = "Yesterday";
+      showTime = true;
+    } else {
+      label = dateFormatter.format(d);
+    }
+
+    let group = groups[groups.length - 1];
+    if (!group || group.label !== label) {
+      group = { label, entries: [], showTime };
+      groups.push(group);
+    }
+
+    group.entries.push(entry);
+  }
+
   return (
-    <div className="library-list">
-      {history.map((entry) => (
-        <div className="library-entry" key={entry.id}>
-          <button className="library-entry__open" type="button" onClick={() => onOpenUrl(entry.url)} title={entry.url}>
-            <Icon name="history" size={16} />
-            <span><strong>{entry.title}</strong><small>{entry.url}</small></span>
-          </button>
-          <time className="library-entry__time" dateTime={new Date(entry.visitedAt).toISOString()}>{relativeTime(entry.visitedAt)}</time>
+    <div className="library-history-groups" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      {groups.map((group) => (
+        <div className="library-group" key={group.label}>
+          <h4 style={{ margin: "0 0 10px 4px", fontSize: "13px", fontWeight: 650, color: "#777a81" }}>{group.label}</h4>
+          <div className="library-list">
+            {group.entries.map((entry) => (
+              <div className="library-entry" key={entry.id}>
+                <button className="library-entry__open" type="button" onClick={() => onOpenUrl(entry.url)} title={entry.url}>
+                  <Icon name="history" size={16} />
+                  <span><strong>{entry.title}</strong><small>{entry.url}</small></span>
+                </button>
+                {group.showTime && (
+                  <time className="library-entry__time" dateTime={new Date(entry.visitedAt).toISOString()}>
+                    {timeFormatter.format(entry.visitedAt)}
+                  </time>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       ))}
     </div>

@@ -136,6 +136,12 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [closeLibrary, executeCommand, handleCreateTab, handleHome, librarySection]);
 
+  useEffect(() => {
+    if (librarySectionRef.current) {
+      closeLibrary();
+    }
+  }, [activeTab?.id, closeLibrary]);
+
   return (
     <main className="browser-shell">
       <header className="browser-chrome">
