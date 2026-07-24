@@ -11,7 +11,8 @@ export type BrowserCommand =
   | "zoom-out"
   | "zoom-reset"
   | "next-tab"
-  | "previous-tab";
+  | "previous-tab"
+  | "reopen-tab";
 
 export interface FindState {
   visible: boolean;

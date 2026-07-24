@@ -30,6 +30,16 @@ let downloads: StoredDownload[] = [];
 const tabs = new Map<string, TabRecord>();
 const recentHistoryUrls = new Map<string, number>();
 
+interface ClosedTabState {
+  url: string;
+  title: string;
+  favicon?: string;
+  zoomFactor?: number;
+  originalIndex: number;
+  isNewTab: boolean;
+}
+const recentlyClosedTabs: ClosedTabState[] = [];
+const MAX_CLOSED_TABS = 15;
 const isDevelopment = Boolean(process.env.ELECTRON_RENDERER_URL);
 
 interface ActiveDownloadTracker {
@@ -533,6 +543,7 @@ function createTab(url?: string, activate = true): string {
   else {
     persistSession();
     syncVisibleState();
+    if (activate) mainWindow?.webContents.focus();
   }
   return record.state.id;
 }
@@ -556,6 +567,18 @@ function closeTab(tabId: string): void {
   const index = orderedTabs.findIndex((record) => record.state.id === tabId);
   const record = tabs.get(tabId);
   if (!record || index === -1) return;
+  recentlyClosedTabs.push({
+    url: record.state.url,
+    title: record.state.title,
+    favicon: record.state.favicon,
+    zoomFactor: record.state.zoomFactor,
+    originalIndex: index,
+    isNewTab: record.state.isNewTab
+  });
+  if (recentlyClosedTabs.length > MAX_CLOSED_TABS) {
+    recentlyClosedTabs.shift();
+  }
+
   releaseView(record);
   tabs.delete(tabId);
   if (tabs.size === 0) {
@@ -571,6 +594,35 @@ function closeTab(tabId: string): void {
     active.view.webContents.focus();
   } else {
     mainWindow?.webContents.focus();
+  }
+}
+
+function reopenTab(): void {
+  if (recentlyClosedTabs.length === 0) return;
+  const state = recentlyClosedTabs.pop()!;
+  
+  const record = makeNewTab();
+  if (state.zoomFactor !== undefined) {
+    record.state.zoomFactor = state.zoomFactor;
+  }
+  
+  const ordered = [...tabs.values()];
+  const targetIndex = Math.min(Math.max(0, state.originalIndex), ordered.length);
+  ordered.splice(targetIndex, 0, record);
+  
+  tabs.clear();
+  for (const r of ordered) {
+    tabs.set(r.state.id, r);
+  }
+  
+  activeTabId = record.state.id;
+  
+  if (state.isNewTab && !state.url) {
+    persistSession();
+    syncVisibleState();
+    mainWindow?.webContents.focus();
+  } else {
+    navigateTab(record.state.id, state.url);
   }
 }
 
@@ -601,6 +653,7 @@ function runBrowserCommand(command: BrowserCommand): void {
   switch (command) {
     case "new-tab": createTab(); break;
     case "close-tab": if (active) closeTab(active.state.id); break;
+    case "reopen-tab": reopenTab(); break;
     case "back": if (active?.view?.webContents.canGoBack()) active.view.webContents.goBack(); break;
     case "forward": if (active?.view?.webContents.canGoForward()) active.view.webContents.goForward(); break;
     case "reload":
@@ -657,7 +710,7 @@ function commandFromInput(input: Electron.Input): BrowserCommand | undefined {
   const commandModifier = input.control || input.meta;
   if (commandModifier) {
     if (input.key === "Tab") return input.shift ? "previous-tab" : "next-tab";
-    if (input.key.toLowerCase() === "t") return "new-tab";
+    if (input.key.toLowerCase() === "t") return input.shift ? "reopen-tab" : "new-tab";
     if (input.key.toLowerCase() === "w") return "close-tab";
     if (input.key.toLowerCase() === "l") return "focus-address";
     if (input.key.toLowerCase() === "f") return "find";

@@ -192,7 +192,7 @@ export default function App() {
           onPauseDownload={(downloadId) => void window.lilyBrowser.pauseDownload(downloadId)}
           onResumeDownload={(downloadId) => void window.lilyBrowser.resumeDownload(downloadId)}
           onCancelDownload={(downloadId) => void window.lilyBrowser.cancelDownload(downloadId)}
-        /> : activeTab?.isNewTab && <NewTabPage onNavigate={submitAddress} />}
+        /> : activeTab?.isNewTab && <NewTabPage key={activeTab.id} onNavigate={submitAddress} />}
       </section>
     </main>
   );
