@@ -4,15 +4,17 @@ import { LibraryPanel, type LibrarySection } from "./components/LibraryPanel";
 import { NewTabPage } from "./components/NewTabPage";
 import { TabStrip } from "./components/TabStrip";
 import { Toolbar } from "./components/Toolbar";
+import { SettingsPanel } from "./components/SettingsPanel";
 import { FindInPage } from "./components/FindInPage";
 import { addressLabel, toNavigationUrl } from "./lib/navigation";
 
-const emptyState: BrowserState = { tabs: [], activeTabId: "", bookmarks: [], history: [], downloads: [] };
+const emptyState: BrowserState = { tabs: [], activeTabId: "", bookmarks: [], history: [], downloads: [], preferences: { searchEngine: "duckduckgo", startupBehavior: "continue", downloadLocation: "" } };
 
 export default function App() {
   const [browserState, setBrowserState] = useState<BrowserState>(emptyState);
   const [address, setAddress] = useState("");
   const [librarySection, setLibrarySection] = useState<LibrarySection | null>(null);
+  const [isSettingsVisible, setIsSettingsVisible] = useState(false);
   const browserSurfaceRef = useRef<HTMLElement | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
   const findInputRef = useRef<HTMLInputElement | null>(null);
@@ -25,6 +27,9 @@ export default function App() {
 
   const librarySectionRef = useRef(librarySection);
   librarySectionRef.current = librarySection;
+
+  const isSettingsVisibleRef = useRef(isSettingsVisible);
+  isSettingsVisibleRef.current = isSettingsVisible;
 
   useEffect(() => {
     let live = true;
@@ -81,10 +86,12 @@ export default function App() {
 
   const closeLibrary = useCallback(() => {
     setLibrarySection(null);
+    setIsSettingsVisible(false);
     window.lilyBrowser.setLibraryVisible(false);
   }, []);
 
   const openLibrary = useCallback((section: LibrarySection = "bookmarks") => {
+    setIsSettingsVisible(false);
     setLibrarySection(section);
     window.lilyBrowser.setLibraryVisible(true);
   }, []);
@@ -96,6 +103,16 @@ export default function App() {
       openLibrary(section);
     }
   }, [closeLibrary, librarySection, openLibrary]);
+
+  const toggleSettings = useCallback(() => {
+    if (isSettingsVisible) {
+      closeLibrary();
+    } else {
+      setLibrarySection(null);
+      setIsSettingsVisible(true);
+      window.lilyBrowser.setLibraryVisible(true);
+    }
+  }, [closeLibrary, isSettingsVisible]);
 
   const handleCreateTab = useCallback(() => {
     closeLibrary();
@@ -112,14 +129,17 @@ export default function App() {
     executeCommand("home");
   }, [closeLibrary, executeCommand]);
 
-  const submitAddress = useCallback((value = address) => {
-    if (!activeTab) return;
-    const destination = toNavigationUrl(value);
-    if (destination) {
-      closeLibrary();
-      void window.lilyBrowser.navigate(activeTab.id, destination);
-    }
-  }, [activeTab, address, closeLibrary]);
+  const submitAddress = useCallback(
+    (value: string = address) => {
+      if (!activeTab || !value.trim()) return;
+      const destination = toNavigationUrl(value, browserState.preferences.searchEngine);
+      if (destination) {
+        closeLibrary();
+        void window.lilyBrowser.navigate(activeTab.id, destination);
+      }
+    },
+    [activeTab, address, closeLibrary, browserState.preferences.searchEngine]
+  );
 
   const openLibraryUrl = useCallback((url: string) => {
     closeLibrary();
@@ -132,17 +152,17 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && librarySection) {
+      if (event.key === "Escape" && (librarySectionRef.current || isSettingsVisibleRef.current)) {
         event.preventDefault();
         closeLibrary();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [closeLibrary, executeCommand, handleCreateTab, handleHome, librarySection]);
+  }, [closeLibrary]);
 
   useEffect(() => {
-    if (librarySectionRef.current) {
+    if (librarySectionRef.current || isSettingsVisibleRef.current) {
       closeLibrary();
     }
   }, [activeTab?.id, closeLibrary]);
@@ -175,6 +195,7 @@ export default function App() {
           isBookmarked={isBookmarked}
           onToggleBookmark={() => activeTab && void window.lilyBrowser.toggleBookmark(activeTab.id)}
           onOpenLibrary={() => toggleLibrary()}
+          onOpenSettings={() => toggleSettings()}
         />
         {activeTab?.findState?.visible && (
           <FindInPage 
@@ -205,6 +226,10 @@ export default function App() {
           onPauseDownload={(downloadId) => void window.lilyBrowser.pauseDownload(downloadId)}
           onResumeDownload={(downloadId) => void window.lilyBrowser.resumeDownload(downloadId)}
           onCancelDownload={(downloadId) => void window.lilyBrowser.cancelDownload(downloadId)}
+        /> : isSettingsVisible && browserState.preferences ? <SettingsPanel
+          preferences={browserState.preferences}
+          onUpdatePreferences={(updates) => void window.lilyBrowser.updatePreferences(updates)}
+          onClose={closeLibrary}
         /> : activeTab?.isNewTab && <NewTabPage key={activeTab.id} onNavigate={submitAddress} />}
       </section>
     </main>

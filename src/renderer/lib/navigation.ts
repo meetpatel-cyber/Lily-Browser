@@ -1,7 +1,7 @@
 const hostnamePattern = /^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?(?:\.[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?)+(?::\d{1,5})?(?:[/?#].*)?$/i;
 const localhostPattern = /^(?:localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d{1,5})?(?:[/?#].*)?$/i;
 
-export function toNavigationUrl(value: string): string | undefined {
+export function toNavigationUrl(value: string, searchEngine: import("../../shared/browser").SearchEngine = "duckduckgo"): string | undefined {
   const candidate = value.trim();
   if (!candidate) return undefined;
 
@@ -22,7 +22,14 @@ export function toNavigationUrl(value: string): string | undefined {
     return `http://${candidate}`;
   }
 
-  return `https://www.google.com/search?q=${encodeURIComponent(candidate)}`;
+  const encoded = encodeURIComponent(candidate);
+  switch (searchEngine) {
+    case "google": return `https://www.google.com/search?q=${encoded}`;
+    case "bing": return `https://www.bing.com/search?q=${encoded}`;
+    case "duckduckgo":
+    default:
+      return `https://duckduckgo.com/?q=${encoded}`;
+  }
 }
 
 export function addressLabel(url: string): string {

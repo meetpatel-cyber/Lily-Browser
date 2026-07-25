@@ -35,12 +35,22 @@ export interface BrowserTab {
   zoomFactor?: number;
 }
 
+export type SearchEngine = "duckduckgo" | "google" | "bing";
+export type StartupBehavior = "continue" | "new-tab";
+
+export interface BrowserPreferences {
+  searchEngine: SearchEngine;
+  startupBehavior: StartupBehavior;
+  downloadLocation: string; // read-only property for UI
+}
+
 export interface BrowserState {
   tabs: BrowserTab[];
   activeTabId: string;
   bookmarks: Bookmark[];
   history: HistoryEntry[];
   downloads: DownloadRecord[];
+  preferences: BrowserPreferences;
 }
 
 export interface BrowserBounds {

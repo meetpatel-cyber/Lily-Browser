@@ -19,6 +19,7 @@ interface ToolbarProps {
   isBookmarked: boolean;
   onToggleBookmark: () => void;
   onOpenLibrary: () => void;
+  onOpenSettings: () => void;
 }
 
 function NavigationButton({ label, disabled, onClick, children }: { label: string; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
@@ -53,7 +54,7 @@ function SecurityIcon({ url, hasError }: { url?: string; hasError: boolean }) {
   return <Icon name="search" size={17} />;
 }
 
-export function Toolbar({ address, activeUrl, hasError, isLoading, canGoBack, canGoForward, addressRef, onAddressChange, onSubmit, onBack, onForward, onReload, onHome, canBookmark, isBookmarked, onToggleBookmark, onOpenLibrary }: ToolbarProps) {
+export function Toolbar({ address, activeUrl, hasError, isLoading, canGoBack, canGoForward, addressRef, onAddressChange, onSubmit, onBack, onForward, onReload, onHome, canBookmark, isBookmarked, onToggleBookmark, onOpenLibrary, onOpenSettings }: ToolbarProps) {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     onSubmit();
@@ -83,6 +84,7 @@ export function Toolbar({ address, activeUrl, hasError, isLoading, canGoBack, ca
       <div className="toolbar__actions">
         <NavigationButton label={isBookmarked ? "Remove bookmark" : "Bookmark this page"} disabled={!canBookmark} onClick={onToggleBookmark}><Icon name="star" filled={isBookmarked} /></NavigationButton>
         <NavigationButton label="Open library" onClick={onOpenLibrary}><Icon name="library" /></NavigationButton>
+        <NavigationButton label="Open settings" onClick={onOpenSettings}><Icon name="settings" /></NavigationButton>
       </div>
     </div>
   );

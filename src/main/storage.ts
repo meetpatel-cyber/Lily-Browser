@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { Bookmark, DownloadRecord, DownloadStatus, HistoryEntry } from "../shared/browser";
+import { app } from "electron";
+import type { Bookmark, BrowserPreferences, DownloadRecord, DownloadStatus, HistoryEntry } from "../shared/browser";
 
 const DATA_VERSION = 1;
 const MAX_BOOKMARKS = 500;
@@ -24,6 +25,7 @@ interface StoredBrowserData {
   history: HistoryEntry[];
   downloads: StoredDownload[];
   session: SessionSnapshot;
+  preferences: BrowserPreferences;
 }
 
 function emptyData(): StoredBrowserData {
@@ -32,7 +34,12 @@ function emptyData(): StoredBrowserData {
     bookmarks: [],
     history: [],
     downloads: [],
-    session: { tabs: [], activeIndex: 0 }
+    session: { tabs: [], activeIndex: 0 },
+    preferences: {
+      searchEngine: "duckduckgo",
+      startupBehavior: "continue",
+      downloadLocation: app.getPath("downloads")
+    }
   };
 }
 
@@ -132,6 +139,20 @@ function sanitizeSession(value: unknown): SessionSnapshot {
   return { tabs, activeIndex: Math.max(0, Math.min(requestedIndex, Math.max(0, tabs.length - 1))) };
 }
 
+function sanitizePreferences(value: unknown): BrowserPreferences {
+  const defaultPrefs = emptyData().preferences;
+  if (!isObject(value)) return defaultPrefs;
+  
+  const searchEngine = value.searchEngine === "google" || value.searchEngine === "bing" ? value.searchEngine : "duckduckgo";
+  const startupBehavior = value.startupBehavior === "new-tab" ? "new-tab" : "continue";
+  
+  return {
+    searchEngine,
+    startupBehavior,
+    downloadLocation: defaultPrefs.downloadLocation
+  };
+}
+
 function sanitizeData(value: unknown): StoredBrowserData {
   if (!isObject(value) || value.version !== DATA_VERSION) return emptyData();
   return {
@@ -139,7 +160,8 @@ function sanitizeData(value: unknown): StoredBrowserData {
     bookmarks: sanitizeBookmarks(value.bookmarks),
     history: sanitizeHistory(value.history),
     downloads: sanitizeDownloads(value.downloads),
-    session: sanitizeSession(value.session)
+    session: sanitizeSession(value.session),
+    preferences: sanitizePreferences(value.preferences)
   };
 }
 
@@ -166,6 +188,20 @@ export class BrowserDataStore {
 
   getSession(): SessionSnapshot {
     return { activeIndex: this.data.session.activeIndex, tabs: this.data.session.tabs.map((tab) => ({ ...tab })) };
+  }
+
+  getPreferences(): BrowserPreferences {
+    return { ...this.data.preferences };
+  }
+
+  updatePreferences(updates: Partial<BrowserPreferences>): void {
+    if (updates.searchEngine && ["duckduckgo", "google", "bing"].includes(updates.searchEngine)) {
+      this.data.preferences.searchEngine = updates.searchEngine;
+    }
+    if (updates.startupBehavior && ["continue", "new-tab"].includes(updates.startupBehavior)) {
+      this.data.preferences.startupBehavior = updates.startupBehavior;
+    }
+    this.persist();
   }
 
   toggleBookmark(url: string, title: string): boolean {

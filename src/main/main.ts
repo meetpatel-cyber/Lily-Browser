@@ -86,7 +86,8 @@ function getSnapshot(): BrowserState {
     activeTabId,
     bookmarks: dataStore.getBookmarks(),
     history: dataStore.getHistory(),
-    downloads: downloads.map(toPublicDownload)
+    downloads: downloads.map(toPublicDownload),
+    preferences: dataStore.getPreferences()
   };
 }
 
@@ -187,7 +188,10 @@ function sessionSnapshot(): SessionSnapshot {
 }
 
 function persistSession(): void {
-  if (dataStore && !isRestoringSession && !sessionSaved) dataStore.saveSession(sessionSnapshot());
+  if (dataStore && !isRestoringSession && !sessionSaved) {
+    if (dataStore.getPreferences().startupBehavior === "new-tab") return;
+    dataStore.saveSession(sessionSnapshot());
+  }
 }
 
 function releaseView(record: TabRecord): void {
@@ -868,8 +872,9 @@ function revealCompletedDownload(downloadId: string): void {
 }
 
 function restoreSession(): void {
+  const prefs = dataStore.getPreferences();
   const restored = dataStore.getSession();
-  if (restored.tabs.length === 0) {
+  if (prefs.startupBehavior === "new-tab" || restored.tabs.length === 0) {
     createTab();
     return;
   }
@@ -989,6 +994,12 @@ function registerIpcHandlers(): void {
   ipcMain.handle("browser:update-bookmark", (_event, bookmarkId: unknown, url: unknown, title: unknown) => {
     if (isIdentifier(bookmarkId) && typeof url === "string" && typeof title === "string") {
       dataStore.updateBookmark(bookmarkId, url, title);
+      publishState();
+    }
+  });
+  ipcMain.handle("browser:update-preferences", (_event, updates: unknown) => {
+    if (typeof updates === "object" && updates !== null) {
+      dataStore.updatePreferences(updates);
       publishState();
     }
   });

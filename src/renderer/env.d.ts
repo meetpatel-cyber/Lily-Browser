@@ -24,6 +24,7 @@ declare global {
       findInPage: (tabId: string, text: string, forward?: boolean, findNext?: boolean) => Promise<void>;
       stopFindInPage: (tabId: string, keepSelection: boolean) => Promise<void>;
       setFindVisible: (tabId: string, visible: boolean) => Promise<void>;
+      updatePreferences: (updates: Partial<import("../shared/browser").BrowserPreferences>) => Promise<void>;
       setLibraryVisible: (visible: boolean) => void;
       setContentBounds: (bounds: BrowserBounds) => void;
       onStateChanged: (callback: (state: BrowserState) => void) => () => void;
