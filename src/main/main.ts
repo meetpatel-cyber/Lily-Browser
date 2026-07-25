@@ -986,6 +986,12 @@ function registerIpcHandlers(): void {
       publishState();
     }
   });
+  ipcMain.handle("browser:update-bookmark", (_event, bookmarkId: unknown, url: unknown, title: unknown) => {
+    if (isIdentifier(bookmarkId) && typeof url === "string" && typeof title === "string") {
+      dataStore.updateBookmark(bookmarkId, url, title);
+      publishState();
+    }
+  });
   ipcMain.handle("browser:clear-history", () => {
     dataStore.clearHistory();
     recentHistoryUrls.clear();

@@ -181,6 +181,15 @@ export class BrowserDataStore {
     return true;
   }
 
+  updateBookmark(bookmarkId: string, url: string, title: string): void {
+    const bookmark = this.data.bookmarks.find((b) => b.id === bookmarkId);
+    if (bookmark) {
+      bookmark.url = url;
+      bookmark.title = readText(title, url);
+      this.persist();
+    }
+  }
+
   removeBookmark(bookmarkId: string): void {
     const next = this.data.bookmarks.filter((bookmark) => bookmark.id !== bookmarkId);
     if (next.length !== this.data.bookmarks.length) {

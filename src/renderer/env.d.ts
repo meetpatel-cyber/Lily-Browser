@@ -13,6 +13,7 @@ declare global {
       runCommand: (command: BrowserCommand) => Promise<void>;
       toggleBookmark: (tabId: string) => Promise<void>;
       removeBookmark: (bookmarkId: string) => Promise<void>;
+      updateBookmark: (bookmarkId: string, url: string, title: string) => Promise<void>;
       clearHistory: () => Promise<void>;
       removeHistoryEntry: (historyId: string) => Promise<void>;
       openDownload: (downloadId: string) => Promise<void>;

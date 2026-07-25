@@ -195,6 +195,7 @@ export default function App() {
           onClose={closeLibrary}
           onOpenUrl={openLibraryUrl}
           onRemoveBookmark={(bookmarkId) => void window.lilyBrowser.removeBookmark(bookmarkId)}
+          onUpdateBookmark={(bookmarkId, url, title) => void window.lilyBrowser.updateBookmark(bookmarkId, url, title)}
           onClearHistory={() => {
             if (window.confirm("Clear all browsing history?")) void window.lilyBrowser.clearHistory();
           }}

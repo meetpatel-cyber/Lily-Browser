@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld("lilyBrowser", {
   runCommand: (command: BrowserCommand): Promise<void> => ipcRenderer.invoke("browser:run-command", command),
   toggleBookmark: (tabId: string): Promise<void> => ipcRenderer.invoke("browser:toggle-bookmark", tabId),
   removeBookmark: (bookmarkId: string): Promise<void> => ipcRenderer.invoke("browser:remove-bookmark", bookmarkId),
+  updateBookmark: (bookmarkId: string, url: string, title: string): Promise<void> => ipcRenderer.invoke("browser:update-bookmark", bookmarkId, url, title),
   clearHistory: (): Promise<void> => ipcRenderer.invoke("browser:clear-history"),
   removeHistoryEntry: (historyId: string): Promise<void> => ipcRenderer.invoke("browser:remove-history-entry", historyId),
   openDownload: (downloadId: string): Promise<void> => ipcRenderer.invoke("browser:open-download", downloadId),
