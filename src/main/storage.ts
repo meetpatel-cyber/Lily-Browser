@@ -211,6 +211,14 @@ export class BrowserDataStore {
     }
   }
 
+  removeHistoryEntry(historyId: string): void {
+    const next = this.data.history.filter((entry) => entry.id !== historyId);
+    if (next.length !== this.data.history.length) {
+      this.data.history = next;
+      this.persist();
+    }
+  }
+
   saveDownloads(downloads: StoredDownload[]): void {
     this.data.downloads = downloads
       .filter((download) => download.status !== "in-progress")

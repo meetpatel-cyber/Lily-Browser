@@ -991,6 +991,12 @@ function registerIpcHandlers(): void {
     recentHistoryUrls.clear();
     publishState();
   });
+  ipcMain.handle("browser:remove-history-entry", (_event, historyId: unknown) => {
+    if (isIdentifier(historyId)) {
+      dataStore.removeHistoryEntry(historyId);
+      publishState();
+    }
+  });
   ipcMain.handle("browser:open-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) openCompletedDownload(downloadId); });
   ipcMain.handle("browser:reveal-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) revealCompletedDownload(downloadId); });
   ipcMain.handle("browser:pause-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) pauseDownload(downloadId); });

@@ -116,14 +116,19 @@ export default function App() {
     if (!activeTab) return;
     const destination = toNavigationUrl(value);
     if (destination) {
+      closeLibrary();
       void window.lilyBrowser.navigate(activeTab.id, destination);
     }
-  }, [activeTab, address]);
+  }, [activeTab, address, closeLibrary]);
 
   const openLibraryUrl = useCallback((url: string) => {
     closeLibrary();
     void window.lilyBrowser.createTab().then((tabId) => window.lilyBrowser.navigate(tabId, url));
   }, [closeLibrary]);
+
+  const handleRemoveHistory = useCallback((historyId: string) => {
+    void window.lilyBrowser.removeHistoryEntry(historyId);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -193,6 +198,7 @@ export default function App() {
           onClearHistory={() => {
             if (window.confirm("Clear all browsing history?")) void window.lilyBrowser.clearHistory();
           }}
+          onRemoveHistory={handleRemoveHistory}
           onOpenDownload={(downloadId) => void window.lilyBrowser.openDownload(downloadId)}
           onRevealDownload={(downloadId) => void window.lilyBrowser.revealDownload(downloadId)}
           onPauseDownload={(downloadId) => void window.lilyBrowser.pauseDownload(downloadId)}

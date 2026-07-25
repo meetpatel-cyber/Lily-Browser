@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("lilyBrowser", {
   toggleBookmark: (tabId: string): Promise<void> => ipcRenderer.invoke("browser:toggle-bookmark", tabId),
   removeBookmark: (bookmarkId: string): Promise<void> => ipcRenderer.invoke("browser:remove-bookmark", bookmarkId),
   clearHistory: (): Promise<void> => ipcRenderer.invoke("browser:clear-history"),
+  removeHistoryEntry: (historyId: string): Promise<void> => ipcRenderer.invoke("browser:remove-history-entry", historyId),
   openDownload: (downloadId: string): Promise<void> => ipcRenderer.invoke("browser:open-download", downloadId),
   revealDownload: (downloadId: string): Promise<void> => ipcRenderer.invoke("browser:reveal-download", downloadId),
   pauseDownload: (downloadId: string): Promise<void> => ipcRenderer.invoke("browser:pause-download", downloadId),

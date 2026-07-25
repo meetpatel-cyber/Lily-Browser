@@ -14,6 +14,7 @@ declare global {
       toggleBookmark: (tabId: string) => Promise<void>;
       removeBookmark: (bookmarkId: string) => Promise<void>;
       clearHistory: () => Promise<void>;
+      removeHistoryEntry: (historyId: string) => Promise<void>;
       openDownload: (downloadId: string) => Promise<void>;
       revealDownload: (downloadId: string) => Promise<void>;
       pauseDownload: (downloadId: string) => Promise<void>;

@@ -1,3 +1,4 @@
+import * as React from "react";
 import type { Bookmark, DownloadRecord, HistoryEntry } from "../../shared/browser";
 import { Icon } from "./Icon";
 
@@ -12,6 +13,7 @@ interface LibraryPanelProps {
   onClose: () => void;
   onOpenUrl: (url: string) => void;
   onRemoveBookmark: (bookmarkId: string) => void;
+  onRemoveHistory: (historyId: string) => void;
   onClearHistory: () => void;
   onOpenDownload: (downloadId: string) => void;
   onRevealDownload: (downloadId: string) => void;
@@ -56,8 +58,19 @@ function BookmarkList({ bookmarks, onOpenUrl, onRemoveBookmark }: Pick<LibraryPa
 const dateFormatter = new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" });
 const timeFormatter = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
 
-function HistoryList({ history, onOpenUrl }: Pick<LibraryPanelProps, "history" | "onOpenUrl">) {
+function HistoryList({ history, onOpenUrl, onRemoveHistory }: Pick<LibraryPanelProps, "history" | "onOpenUrl" | "onRemoveHistory">) {
+  const [searchQuery, setSearchQuery] = React.useState("");
+
   if (history.length === 0) return <EmptyState>Pages you visit will appear here.</EmptyState>;
+
+  const query = searchQuery.trim().toLowerCase();
+  const filteredHistory = query
+    ? history.filter(
+        (entry) =>
+          entry.title.toLowerCase().includes(query) ||
+          entry.url.toLowerCase().includes(query)
+      )
+    : history;
 
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -65,7 +78,7 @@ function HistoryList({ history, onOpenUrl }: Pick<LibraryPanelProps, "history" |
 
   const groups: { label: string; entries: HistoryEntry[]; showTime: boolean }[] = [];
 
-  for (const entry of history) {
+  for (const entry of filteredHistory) {
     const d = new Date(entry.visitedAt);
     const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
@@ -92,27 +105,58 @@ function HistoryList({ history, onOpenUrl }: Pick<LibraryPanelProps, "history" |
   }
 
   return (
-    <div className="library-history-groups" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      {groups.map((group) => (
-        <div className="library-group" key={group.label}>
-          <h4 style={{ margin: "0 0 10px 4px", fontSize: "13px", fontWeight: 650, color: "#777a81" }}>{group.label}</h4>
-          <div className="library-list">
-            {group.entries.map((entry) => (
-              <div className="library-entry" key={entry.id}>
-                <button className="library-entry__open" type="button" onClick={() => onOpenUrl(entry.url)} title={entry.url}>
-                  <Icon name="history" size={16} />
-                  <span><strong>{entry.title}</strong><small>{entry.url}</small></span>
-                </button>
-                {group.showTime && (
-                  <time className="library-entry__time" dateTime={new Date(entry.visitedAt).toISOString()}>
-                    {timeFormatter.format(entry.visitedAt)}
-                  </time>
-                )}
+    <div className="library-history-container" style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
+      <div className="history-search">
+        <span className="history-search__icon"><Icon name="search" size={14} /></span>
+        <input
+          type="text"
+          className="history-search__input"
+          placeholder="Search history"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            className="history-search__clear"
+            title="Clear search"
+            aria-label="Clear search"
+            onClick={() => setSearchQuery("")}
+          >
+            <Icon name="close" size={15} />
+          </button>
+        )}
+      </div>
+
+      {filteredHistory.length === 0 ? (
+        <EmptyState>No history found.</EmptyState>
+      ) : (
+        <div className="library-history-groups" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+          {groups.map((group) => (
+            <div className="library-group" key={group.label}>
+              <h4 style={{ margin: "0 0 10px 4px", fontSize: "13px", fontWeight: 650, color: "#777a81" }}>{group.label}</h4>
+              <div className="library-list">
+                {group.entries.map((entry) => (
+                  <div className="library-entry" key={entry.id}>
+                    <button className="library-entry__open" type="button" onClick={() => onOpenUrl(entry.url)} title={entry.url}>
+                      <Icon name="history" size={16} />
+                      <span><strong>{entry.title}</strong><small>{entry.url}</small></span>
+                    </button>
+                    {group.showTime && (
+                      <time className="library-entry__time" dateTime={new Date(entry.visitedAt).toISOString()}>
+                        {timeFormatter.format(entry.visitedAt)}
+                      </time>
+                    )}
+                    <button className="library-entry__action" type="button" title="Remove from history" aria-label="Remove from history" onClick={() => onRemoveHistory(entry.id)}>
+                      <Icon name="close" size={15} />
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -180,7 +224,7 @@ function DownloadList({ downloads, onOpenDownload, onRevealDownload, onPauseDown
   );
 }
 
-export function LibraryPanel({ section, bookmarks, history, downloads, onSectionChange, onClose, onOpenUrl, onRemoveBookmark, onClearHistory, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload }: LibraryPanelProps) {
+export function LibraryPanel({ section, bookmarks, history, downloads, onSectionChange, onClose, onOpenUrl, onRemoveBookmark, onRemoveHistory, onClearHistory, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload }: LibraryPanelProps) {
   return (
     <section className="library-panel" aria-label="Library">
       <div className="library-panel__header">
@@ -196,7 +240,7 @@ export function LibraryPanel({ section, bookmarks, history, downloads, onSection
           {section === "history" && history.length > 0 && <button className="library-clear" type="button" onClick={onClearHistory}>Clear history</button>}
         </div>
         {section === "bookmarks" && <BookmarkList bookmarks={bookmarks} onOpenUrl={onOpenUrl} onRemoveBookmark={onRemoveBookmark} />}
-        {section === "history" && <HistoryList history={history} onOpenUrl={onOpenUrl} />}
+        {section === "history" && <HistoryList history={history} onOpenUrl={onOpenUrl} onRemoveHistory={onRemoveHistory} />}
         {section === "downloads" && <DownloadList downloads={downloads} onOpenDownload={onOpenDownload} onRevealDownload={onRevealDownload} onPauseDownload={onPauseDownload} onResumeDownload={onResumeDownload} onCancelDownload={onCancelDownload} />}
       </div>
     </section>
