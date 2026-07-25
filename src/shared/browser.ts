@@ -42,6 +42,7 @@ export interface BrowserPreferences {
   searchEngine: SearchEngine;
   startupBehavior: StartupBehavior;
   downloadLocation: string; // read-only property for UI
+  askWhereToSave: boolean;
 }
 
 export interface BrowserState {

@@ -63,7 +63,35 @@ export function SettingsPanel({ preferences, onUpdatePreferences, onClose }: Set
           <div className="settings-item">
             <div className="settings-item__info">
               <label>Download Location</label>
-              <p className="settings-path">{preferences.downloadLocation}</p>
+              <div className="settings-path-row" style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
+                <p className="settings-path" style={{ margin: 0, wordBreak: "break-all" }}>{preferences.downloadLocation}</p>
+                <button
+                  type="button"
+                  className="settings-button"
+                  onClick={async () => {
+                    const newLocation = await window.lilyBrowser.chooseDownloadLocation();
+                    if (newLocation) onUpdatePreferences({ downloadLocation: newLocation });
+                  }}
+                  style={{ flexShrink: 0 }}
+                >
+                  Change...
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="settings-item">
+            <div className="settings-item__info">
+              <label htmlFor="ask-where-to-save" style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                <input
+                  id="ask-where-to-save"
+                  type="checkbox"
+                  checked={preferences.askWhereToSave}
+                  onChange={(e) => onUpdatePreferences({ askWhereToSave: e.target.checked })}
+                  style={{ cursor: "pointer" }}
+                />
+                Ask where to save each file before downloading
+              </label>
             </div>
           </div>
         </div>

@@ -730,6 +730,21 @@ function commandFromInput(input: Electron.Input): BrowserCommand | undefined {
   return undefined;
 }
 
+function getSafeDownloadPath(baseDir: string, filename: string): string {
+  let safePath = path.join(baseDir, filename);
+  if (!existsSync(safePath)) return safePath;
+
+  const ext = path.extname(filename);
+  const name = path.basename(filename, ext);
+  
+  let i = 1;
+  while (true) {
+    safePath = path.join(baseDir, `${name} (${i})${ext}`);
+    if (!existsSync(safePath)) return safePath;
+    i++;
+  }
+}
+
 function registerDownloadHandler(): void {
   session.defaultSession.on("will-download", (_event, item) => {
     const downloadId = randomUUID();
@@ -745,6 +760,17 @@ function registerDownloadHandler(): void {
       isPaused: false,
       canResume: item.canResume()
     };
+
+    const prefs = dataStore.getPreferences();
+    if (prefs.askWhereToSave) {
+      item.setSaveDialogOptions({
+        defaultPath: path.join(prefs.downloadLocation, download.filename)
+      });
+    } else {
+      const safePath = getSafeDownloadPath(prefs.downloadLocation, download.filename);
+      item.setSavePath(safePath);
+      download.filename = path.basename(safePath);
+    }
 
     activeDownloads.set(downloadId, {
       item,
@@ -799,8 +825,13 @@ function registerDownloadHandler(): void {
         download.savePath = item.getSavePath();
         download.error = undefined;
       } else if (state === "cancelled") {
-        download.status = "cancelled";
-        download.error = "Download cancelled.";
+        if (!item.getSavePath()) {
+          const idx = downloads.findIndex(d => d.id === downloadId);
+          if (idx !== -1) downloads.splice(idx, 1);
+        } else {
+          download.status = "cancelled";
+          download.error = "Download cancelled.";
+        }
       } else {
         download.status = "failed";
         download.error = item.getLastModifiedTime() ? "Download failed before completion." : "Download failed.";
@@ -809,6 +840,11 @@ function registerDownloadHandler(): void {
       publishState();
     });
   });
+}
+
+function updateDownloadConfig(): void {
+  const prefs = dataStore.getPreferences();
+  session.defaultSession.setDownloadPath(prefs.downloadLocation);
 }
 
 function pauseDownload(downloadId: string): void {
@@ -1000,6 +1036,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle("browser:update-preferences", (_event, updates: unknown) => {
     if (typeof updates === "object" && updates !== null) {
       dataStore.updatePreferences(updates);
+      updateDownloadConfig();
       publishState();
     }
   });
@@ -1019,6 +1056,16 @@ function registerIpcHandlers(): void {
   ipcMain.handle("browser:pause-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) pauseDownload(downloadId); });
   ipcMain.handle("browser:resume-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) resumeDownload(downloadId); });
   ipcMain.handle("browser:cancel-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) cancelDownload(downloadId); });
+  ipcMain.handle("browser:choose-download-location", async () => {
+    if (!mainWindow) return undefined;
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ["openDirectory"]
+    });
+    if (!result.canceled && result.filePaths.length > 0) {
+      return result.filePaths[0];
+    }
+    return undefined;
+  });
   ipcMain.on("browser:set-library-visible", (_event, visible: unknown) => {
     if (typeof visible === "boolean") {
       libraryVisible = visible;
@@ -1086,6 +1133,7 @@ function registerIpcHandlers(): void {
 app.whenReady().then(() => {
   dataStore = new BrowserDataStore(app.getPath("userData"));
   downloads = dataStore.getDownloads();
+  updateDownloadConfig();
   registerIpcHandlers();
   registerDownloadHandler();
   buildApplicationMenu();

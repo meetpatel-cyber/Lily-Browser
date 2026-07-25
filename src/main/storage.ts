@@ -38,7 +38,8 @@ function emptyData(): StoredBrowserData {
     preferences: {
       searchEngine: "duckduckgo",
       startupBehavior: "continue",
-      downloadLocation: app.getPath("downloads")
+      downloadLocation: app.getPath("downloads"),
+      askWhereToSave: false
     }
   };
 }
@@ -146,10 +147,20 @@ function sanitizePreferences(value: unknown): BrowserPreferences {
   const searchEngine = value.searchEngine === "google" || value.searchEngine === "bing" ? value.searchEngine : "duckduckgo";
   const startupBehavior = value.startupBehavior === "new-tab" ? "new-tab" : "continue";
   
+  let downloadLocation = defaultPrefs.downloadLocation;
+  if (typeof value.downloadLocation === "string" && value.downloadLocation.trim() !== "") {
+    if (existsSync(value.downloadLocation)) {
+      downloadLocation = value.downloadLocation;
+    }
+  }
+
+  const askWhereToSave = typeof value.askWhereToSave === "boolean" ? value.askWhereToSave : defaultPrefs.askWhereToSave;
+
   return {
     searchEngine,
     startupBehavior,
-    downloadLocation: defaultPrefs.downloadLocation
+    downloadLocation,
+    askWhereToSave
   };
 }
 
@@ -200,6 +211,14 @@ export class BrowserDataStore {
     }
     if (updates.startupBehavior && ["continue", "new-tab"].includes(updates.startupBehavior)) {
       this.data.preferences.startupBehavior = updates.startupBehavior;
+    }
+    if (typeof updates.downloadLocation === "string" && updates.downloadLocation.trim() !== "") {
+      if (existsSync(updates.downloadLocation)) {
+        this.data.preferences.downloadLocation = updates.downloadLocation;
+      }
+    }
+    if (typeof updates.askWhereToSave === "boolean") {
+      this.data.preferences.askWhereToSave = updates.askWhereToSave;
     }
     this.persist();
   }

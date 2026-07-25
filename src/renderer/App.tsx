@@ -8,7 +8,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { FindInPage } from "./components/FindInPage";
 import { addressLabel, toNavigationUrl } from "./lib/navigation";
 
-const emptyState: BrowserState = { tabs: [], activeTabId: "", bookmarks: [], history: [], downloads: [], preferences: { searchEngine: "duckduckgo", startupBehavior: "continue", downloadLocation: "" } };
+const emptyState: BrowserState = { tabs: [], activeTabId: "", bookmarks: [], history: [], downloads: [], preferences: { searchEngine: "duckduckgo", startupBehavior: "continue", downloadLocation: "", askWhereToSave: false } };
 
 export default function App() {
   const [browserState, setBrowserState] = useState<BrowserState>(emptyState);
