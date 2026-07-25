@@ -1,5 +1,5 @@
 import * as React from "react";
-import type { BrowserPreferences, SearchEngine, StartupBehavior } from "../../shared/browser";
+import type { AppearanceMode, BrowserPreferences, SearchEngine, StartupBehavior } from "../../shared/browser";
 import { Icon } from "./Icon";
 
 interface SettingsPanelProps {
@@ -57,6 +57,22 @@ export function SettingsPanel({ preferences, onUpdatePreferences, onClose }: Set
             >
               <option value="continue">Continue where you left off</option>
               <option value="new-tab">Open New Tab</option>
+            </select>
+          </div>
+
+          <div className="settings-item">
+            <div className="settings-item__info">
+              <label htmlFor="appearance">Appearance</label>
+            </div>
+            <select
+              id="appearance"
+              className="settings-select"
+              value={preferences.appearance}
+              onChange={(e) => onUpdatePreferences({ appearance: e.target.value as AppearanceMode })}
+            >
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
             </select>
           </div>
 

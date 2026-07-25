@@ -37,12 +37,14 @@ export interface BrowserTab {
 
 export type SearchEngine = "duckduckgo" | "google" | "bing";
 export type StartupBehavior = "continue" | "new-tab";
+export type AppearanceMode = "light" | "dark" | "system";
 
 export interface BrowserPreferences {
   searchEngine: SearchEngine;
   startupBehavior: StartupBehavior;
   downloadLocation: string; // read-only property for UI
   askWhereToSave: boolean;
+  appearance: AppearanceMode;
 }
 
 export interface BrowserState {
@@ -52,6 +54,7 @@ export interface BrowserState {
   history: HistoryEntry[];
   downloads: DownloadRecord[];
   preferences: BrowserPreferences;
+  effectiveTheme: "light" | "dark";
 }
 
 export interface BrowserBounds {

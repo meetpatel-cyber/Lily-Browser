@@ -8,7 +8,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { FindInPage } from "./components/FindInPage";
 import { addressLabel, toNavigationUrl } from "./lib/navigation";
 
-const emptyState: BrowserState = { tabs: [], activeTabId: "", bookmarks: [], history: [], downloads: [], preferences: { searchEngine: "duckduckgo", startupBehavior: "continue", downloadLocation: "", askWhereToSave: false } };
+const emptyState: BrowserState = { tabs: [], activeTabId: "", bookmarks: [], history: [], downloads: [], preferences: { searchEngine: "duckduckgo", startupBehavior: "continue", downloadLocation: "", askWhereToSave: false, appearance: "system" }, effectiveTheme: "light" };
 
 export default function App() {
   const [browserState, setBrowserState] = useState<BrowserState>(emptyState);
@@ -168,7 +168,7 @@ export default function App() {
   }, [activeTab?.id, closeLibrary]);
 
   return (
-    <main className="browser-shell">
+    <main className={`browser-shell theme-${browserState.effectiveTheme || "light"}`}>
       <header className="browser-chrome">
         <TabStrip
           tabs={browserState.tabs}

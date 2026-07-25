@@ -39,7 +39,8 @@ function emptyData(): StoredBrowserData {
       searchEngine: "duckduckgo",
       startupBehavior: "continue",
       downloadLocation: app.getPath("downloads"),
-      askWhereToSave: false
+      askWhereToSave: false,
+      appearance: "system"
     }
   };
 }
@@ -155,12 +156,14 @@ function sanitizePreferences(value: unknown): BrowserPreferences {
   }
 
   const askWhereToSave = typeof value.askWhereToSave === "boolean" ? value.askWhereToSave : defaultPrefs.askWhereToSave;
+  const appearance = value.appearance === "light" || value.appearance === "dark" ? value.appearance : "system";
 
   return {
     searchEngine,
     startupBehavior,
     downloadLocation,
-    askWhereToSave
+    askWhereToSave,
+    appearance
   };
 }
 
@@ -219,6 +222,9 @@ export class BrowserDataStore {
     }
     if (typeof updates.askWhereToSave === "boolean") {
       this.data.preferences.askWhereToSave = updates.askWhereToSave;
+    }
+    if (updates.appearance && ["light", "dark", "system"].includes(updates.appearance)) {
+      this.data.preferences.appearance = updates.appearance;
     }
     this.persist();
   }

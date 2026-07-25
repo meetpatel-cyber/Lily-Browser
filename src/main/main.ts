@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions, session, shell, WebContentsView } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions, nativeTheme, session, shell, WebContentsView } from "electron";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -81,13 +81,20 @@ function toPublicDownload(download: StoredDownload): DownloadRecord {
 }
 
 function getSnapshot(): BrowserState {
+  const prefs = dataStore.getPreferences();
+  let effectiveTheme: "light" | "dark" = prefs.appearance === "dark" ? "dark" : "light";
+  if (prefs.appearance === "system") {
+    effectiveTheme = nativeTheme.shouldUseDarkColors ? "dark" : "light";
+  }
+
   return {
     tabs: [...tabs.values()].map(({ state }) => ({ ...state })),
     activeTabId,
     bookmarks: dataStore.getBookmarks(),
     history: dataStore.getHistory(),
     downloads: downloads.map(toPublicDownload),
-    preferences: dataStore.getPreferences()
+    preferences: prefs,
+    effectiveTheme
   };
 }
 
@@ -351,6 +358,16 @@ function renderErrorHtml(friendly: FriendlyError, failedUrl: string): string {
   ul { margin: 0 0 20px; padding-left: 18px; font-size: 13px; color: #4b5563; line-height: 1.55; }
   li { margin-bottom: 4px; }
   .tech { font-size: 11px; color: #9ca3af; border-top: 1px solid #f3f4f6; padding-top: 12px; margin-top: 18px; font-family: ui-monospace, monospace; }
+  @media (prefers-color-scheme: dark) {
+    :root { color: #f7f7f8; background: #1e1e20; }
+    .card { background: #27282b; border-color: #3f3f46; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+    .icon { background: #451a1a; color: #f87171; }
+    .icon--security { background: #452910; color: #fbbf24; }
+    h1 { color: #f3f4f6; }
+    .url { background: #1f2937; color: #9ca3af; border-color: #374151; }
+    p, ul { color: #d1d5db; }
+    .tech { color: #9ca3af; border-color: #3f3f46; }
+  }
 </style>
 </head>
 <body>
@@ -955,8 +972,11 @@ function buildApplicationMenu(): void {
 function createWindow(): void {
   sessionSaved = false;
   forceCloseForActiveDownloads = false;
+  
+  nativeTheme.themeSource = dataStore.getPreferences().appearance;
+  
   mainWindow = new BrowserWindow({
-    width: 1240, height: 820, minWidth: 760, minHeight: 540, title: "Lily Browser", backgroundColor: "#f7f7f8", show: false,
+    width: 1240, height: 820, minWidth: 760, minHeight: 540, title: "Lily Browser", backgroundColor: nativeTheme.shouldUseDarkColors ? "#1e1e20" : "#f7f7f8", show: false,
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   mainWindow.webContents.on("before-input-event", (event, input) => {
@@ -1036,6 +1056,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle("browser:update-preferences", (_event, updates: unknown) => {
     if (typeof updates === "object" && updates !== null) {
       dataStore.updatePreferences(updates);
+      nativeTheme.themeSource = dataStore.getPreferences().appearance;
       updateDownloadConfig();
       publishState();
     }
@@ -1134,6 +1155,10 @@ app.whenReady().then(() => {
   dataStore = new BrowserDataStore(app.getPath("userData"));
   downloads = dataStore.getDownloads();
   updateDownloadConfig();
+  
+  nativeTheme.on("updated", () => {
+    publishState();
+  });
   registerIpcHandlers();
   registerDownloadHandler();
   buildApplicationMenu();
