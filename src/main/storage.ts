@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { app } from "electron";
-import type { Bookmark, BrowserPreferences, DownloadRecord, DownloadStatus, HistoryEntry } from "../shared/browser";
+import type { Bookmark, BrowserPreferences, DownloadRecord, DownloadStatus, HistoryEntry, PermissionCategory, PermissionDecision, SitePermissions } from "../shared/browser";
 
 const DATA_VERSION = 1;
 const MAX_BOOKMARKS = 500;
@@ -26,6 +26,7 @@ interface StoredBrowserData {
   downloads: StoredDownload[];
   session: SessionSnapshot;
   preferences: BrowserPreferences;
+  permissions: SitePermissions;
 }
 
 function emptyData(): StoredBrowserData {
@@ -41,7 +42,8 @@ function emptyData(): StoredBrowserData {
       downloadLocation: app.getPath("downloads"),
       askWhereToSave: false,
       appearance: "system"
-    }
+    },
+    permissions: {}
   };
 }
 
@@ -175,8 +177,30 @@ function sanitizeData(value: unknown): StoredBrowserData {
     history: sanitizeHistory(value.history),
     downloads: sanitizeDownloads(value.downloads),
     session: sanitizeSession(value.session),
-    preferences: sanitizePreferences(value.preferences)
+    preferences: sanitizePreferences(value.preferences),
+    permissions: sanitizePermissions((value as Record<string, unknown>).permissions)
   };
+}
+
+function sanitizePermissions(value: unknown): SitePermissions {
+  if (!isObject(value)) return {};
+  const sanitized: SitePermissions = {};
+  for (const [origin, perms] of Object.entries(value)) {
+    if (typeof origin === "string" && origin.startsWith("http") && isObject(perms)) {
+      const safePerms: Partial<Record<PermissionCategory, PermissionDecision>> = {};
+      const allowedCategories: PermissionCategory[] = ["camera", "microphone", "notifications", "geolocation"];
+      for (const cat of allowedCategories) {
+        const decision = (perms as Record<string, unknown>)[cat];
+        if (decision === "allow" || decision === "block") {
+          safePerms[cat] = decision;
+        }
+      }
+      if (Object.keys(safePerms).length > 0) {
+        sanitized[origin] = safePerms;
+      }
+    }
+  }
+  return sanitized;
 }
 
 export class BrowserDataStore {
@@ -206,6 +230,37 @@ export class BrowserDataStore {
 
   getPreferences(): BrowserPreferences {
     return { ...this.data.preferences };
+  }
+
+  getPermissions(): SitePermissions {
+    return JSON.parse(JSON.stringify(this.data.permissions));
+  }
+
+  getPermission(origin: string, category: PermissionCategory): PermissionDecision | undefined {
+    return this.data.permissions[origin]?.[category];
+  }
+
+  setPermission(origin: string, category: PermissionCategory, decision: PermissionDecision): void {
+    if (!this.data.permissions[origin]) {
+      this.data.permissions[origin] = {};
+    }
+    this.data.permissions[origin][category] = decision;
+    this.persist();
+  }
+
+  removePermission(origin: string, category: PermissionCategory): void {
+    if (this.data.permissions[origin]) {
+      delete this.data.permissions[origin][category];
+      if (Object.keys(this.data.permissions[origin]).length === 0) {
+        delete this.data.permissions[origin];
+      }
+      this.persist();
+    }
+  }
+
+  clearAllPermissions(): void {
+    this.data.permissions = {};
+    this.persist();
   }
 
   updatePreferences(updates: Partial<BrowserPreferences>): void {

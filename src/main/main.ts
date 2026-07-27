@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOpti
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import type { BrowserBounds, BrowserCommand, BrowserState, BrowserTab, DownloadRecord } from "../shared/browser";
+import type { BrowserBounds, BrowserCommand, BrowserState, BrowserTab, DownloadRecord, PendingPermission, PermissionCategory } from "../shared/browser";
 import { BrowserDataStore, type SessionSnapshot, type StoredDownload } from "./storage";
 
 interface TabRecord {
@@ -28,8 +28,15 @@ let forceCloseForActiveDownloads = false;
 let dataStore: BrowserDataStore;
 let downloads: StoredDownload[] = [];
 const tabs = new Map<string, TabRecord>();
-const recentHistoryUrls = new Map<string, number>();
 
+const pendingPermissions: PendingPermission[] = [];
+const pendingPermissionCallbacks = new Map<string, Array<(allowed: boolean) => void>>();
+interface DismissalBurst {
+  lastActivity: number;
+  categories: Set<PermissionCategory>;
+}
+const recentDismissals = new Map<string, DismissalBurst>();
+const recentHistoryUrls = new Map<string, number>();
 interface ClosedTabState {
   url: string;
   title: string;
@@ -94,6 +101,8 @@ function getSnapshot(): BrowserState {
     history: dataStore.getHistory(),
     downloads: downloads.map(toPublicDownload),
     preferences: prefs,
+    permissions: dataStore.getPermissions(),
+    pendingPermissions: [...pendingPermissions],
     effectiveTheme
   };
 }
@@ -600,6 +609,24 @@ function closeTab(tabId: string): void {
     recentlyClosedTabs.shift();
   }
 
+  const tabPending = pendingPermissions.filter(p => p.tabId === tabId);
+  for (const p of tabPending) {
+    const callbacks = pendingPermissionCallbacks.get(p.id);
+    if (callbacks) {
+      for (const callback of callbacks) {
+        callback(false);
+      }
+      pendingPermissionCallbacks.delete(p.id);
+    }
+  }
+  pendingPermissions.splice(0, pendingPermissions.length, ...pendingPermissions.filter(p => p.tabId !== tabId));
+  
+  for (const key of recentDismissals.keys()) {
+    if (key.startsWith(`${tabId}:`)) {
+      recentDismissals.delete(key);
+    }
+  }
+  
   releaseView(record);
   tabs.delete(tabId);
   if (tabs.size === 0) {
@@ -1089,6 +1116,69 @@ function registerIpcHandlers(): void {
       throw error;
     }
   });
+
+  function cleanStaleDismissals() {
+    const now = Date.now();
+    for (const [key, burst] of recentDismissals.entries()) {
+      if (now - burst.lastActivity > 5000) {
+        recentDismissals.delete(key);
+      }
+    }
+  }
+
+  ipcMain.handle("browser:resolve-permission", (_event, reqId: unknown, decision: unknown) => {
+    if (typeof reqId !== "string" || (decision !== "allow" && decision !== "block" && decision !== "dismiss")) return;
+    
+    cleanStaleDismissals();
+    
+    const index = pendingPermissions.findIndex(p => p.id === reqId);
+    if (index === -1) return;
+    
+    const pending = pendingPermissions[index];
+    pendingPermissions.splice(index, 1);
+    
+    const burstKey = `${pending.tabId}:${pending.origin}`;
+    let burst = recentDismissals.get(burstKey);
+    if (!burst) {
+      burst = { lastActivity: Date.now(), categories: new Set() };
+      recentDismissals.set(burstKey, burst);
+    }
+    burst.lastActivity = Date.now();
+    
+    if (decision === "dismiss") {
+      burst.categories.add(pending.category);
+    }
+    
+    const callbacks = pendingPermissionCallbacks.get(reqId);
+    if (callbacks) {
+      pendingPermissionCallbacks.delete(reqId);
+      if (decision === "allow" || decision === "block") {
+        if (pending.category === "cameraAndMicrophone") {
+          dataStore.setPermission(pending.origin, "camera", decision);
+          dataStore.setPermission(pending.origin, "microphone", decision);
+        } else {
+          dataStore.setPermission(pending.origin, pending.category, decision);
+        }
+        for (const cb of callbacks) cb(decision === "allow");
+      } else {
+        for (const cb of callbacks) cb(false);
+      }
+    }
+    publishState();
+  });
+
+  ipcMain.handle("browser:remove-permission", (_event, origin: unknown, category: unknown) => {
+    if (typeof origin === "string" && typeof category === "string") {
+      dataStore.removePermission(origin, category as PermissionCategory);
+      publishState();
+    }
+  });
+
+  ipcMain.handle("browser:clear-all-permissions", () => {
+    dataStore.clearAllPermissions();
+    publishState();
+  });
+
   ipcMain.handle("browser:remove-history-entry", (_event, historyId: unknown) => {
     if (isIdentifier(historyId)) {
       dataStore.removeHistoryEntry(historyId);
@@ -1174,6 +1264,127 @@ function registerIpcHandlers(): void {
   });
 }
 
+function setupPermissions(): void {
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    let category: PermissionCategory | null = null;
+    let isCombinedMedia = false;
+    
+    if (permission === "media") {
+      const mediaReq = details as Electron.MediaAccessPermissionRequest;
+      const hasVideo = mediaReq.mediaTypes?.includes("video");
+      const hasAudio = mediaReq.mediaTypes?.includes("audio");
+      if (hasVideo && hasAudio) {
+        category = "cameraAndMicrophone";
+        isCombinedMedia = true;
+      } else if (hasVideo) {
+        category = "camera";
+      } else if (hasAudio) {
+        category = "microphone";
+      }
+    } else if (permission === "notifications") {
+      category = "notifications";
+    } else if (permission === "geolocation") {
+      category = "geolocation";
+    }
+    
+    if (!category) return callback(false);
+    
+    const rawOrigin = (details as unknown as Record<string, string>).securityOrigin || details.requestingUrl;
+    let origin: string | null = null;
+    try {
+      const parsed = new URL(rawOrigin || "");
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        origin = parsed.origin;
+      }
+    } catch {
+      origin = null;
+    }
+    if (!origin) return callback(false);
+    
+    let promptCategory = category;
+    if (isCombinedMedia) {
+      const camDecision = dataStore.getPermission(origin, "camera");
+      const micDecision = dataStore.getPermission(origin, "microphone");
+      if (camDecision === "allow" && micDecision === "allow") return callback(true);
+      if (camDecision === "block" || micDecision === "block") return callback(false);
+      
+      if (camDecision === "allow" && micDecision === undefined) {
+        promptCategory = "microphone";
+      } else if (micDecision === "allow" && camDecision === undefined) {
+        promptCategory = "camera";
+      }
+    } else {
+      const decision = dataStore.getPermission(origin, category);
+      if (decision === "allow") return callback(true);
+      if (decision === "block") return callback(false);
+    }
+    
+    const record = Array.from(tabs.values()).find(t => t.view && t.view.webContents.id === webContents.id);
+    if (!record) return callback(false);
+    
+    const burstKey = `${record.state.id}:${origin}`;
+    const burst = recentDismissals.get(burstKey);
+    
+    if (burst) {
+      if (Date.now() - burst.lastActivity < 500) {
+        if (burst.categories.has(promptCategory)) {
+          // Chromium sequential queue is flushing a previously dismissed category.
+          // Auto-dismiss and extend the window.
+          burst.lastActivity = Date.now();
+          return callback(false);
+        }
+      } else {
+        recentDismissals.delete(burstKey);
+      }
+    }
+    
+    // Deduplication logic: Check if there's an exact pending prompt already
+    const existingPrompt = pendingPermissions.find(p => p.tabId === record.state.id && p.origin === origin && p.category === promptCategory);
+    if (existingPrompt) {
+      const callbacks = pendingPermissionCallbacks.get(existingPrompt.id);
+      if (callbacks) {
+        callbacks.push(callback);
+        publishState();
+        return; // Suppress creating a new prompt
+      }
+    }
+    
+    const reqId = randomUUID();
+    pendingPermissionCallbacks.set(reqId, [callback]);
+    pendingPermissions.push({ id: reqId, tabId: record.state.id, origin, category: promptCategory });
+    publishState();
+  });
+
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    let category: PermissionCategory | null = null;
+    if (permission === "media") {
+      if (details.mediaType === "video") category = "camera";
+      else if (details.mediaType === "audio") category = "microphone";
+    } else if (permission === "notifications") {
+      category = "notifications";
+    } else if (permission === "geolocation") {
+      category = "geolocation";
+    }
+    
+    if (!category) return false;
+    
+    const rawOrigin = details.securityOrigin || details.requestingUrl || requestingOrigin;
+    let origin: string | null = null;
+    try {
+      const parsed = new URL(rawOrigin || "");
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        origin = parsed.origin;
+      }
+    } catch {
+      origin = null;
+    }
+    if (!origin) return false;
+    
+    const decision = dataStore.getPermission(origin, category);
+    return decision === "allow";
+  });
+}
+
 app.whenReady().then(() => {
   dataStore = new BrowserDataStore(app.getPath("userData"));
   downloads = dataStore.getDownloads();
@@ -1182,6 +1393,7 @@ app.whenReady().then(() => {
   nativeTheme.on("updated", () => {
     publishState();
   });
+  setupPermissions();
   registerIpcHandlers();
   registerDownloadHandler();
   buildApplicationMenu();

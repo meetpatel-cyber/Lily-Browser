@@ -1,15 +1,16 @@
 import * as React from "react";
 import { useState } from "react";
-import type { AppearanceMode, BrowserPreferences, SearchEngine, StartupBehavior } from "../../shared/browser";
+import type { AppearanceMode, BrowserPreferences, SearchEngine, SitePermissions, StartupBehavior } from "../../shared/browser";
 import { Icon } from "./Icon";
 
 interface SettingsPanelProps {
   preferences: BrowserPreferences;
+  permissions: SitePermissions;
   onUpdatePreferences: (updates: Partial<BrowserPreferences>) => void;
   onClose: () => void;
 }
 
-export function SettingsPanel({ preferences, onUpdatePreferences, onClose }: SettingsPanelProps) {
+export function SettingsPanel({ preferences, permissions, onUpdatePreferences, onClose }: SettingsPanelProps) {
   const [clearHistory, setClearHistory] = useState(true);
   const [clearCookies, setClearCookies] = useState(false);
   const [clearCache, setClearCache] = useState(false);
@@ -193,6 +194,69 @@ export function SettingsPanel({ preferences, onUpdatePreferences, onClose }: Set
             </button>
           </div>
         </div>
+
+        <div className="library-panel__section-heading" style={{ marginTop: "24px" }}>
+          <h3>Site Permissions</h3>
+        </div>
+        
+        <div className="settings-group">
+          {(!permissions || Object.keys(permissions).length === 0) ? (
+            <div className="settings-item">
+              <p style={{ color: "var(--fg-muted)", fontSize: "13px" }}>No site permissions saved.</p>
+            </div>
+          ) : (
+            <>
+              {Object.entries(permissions).map(([origin, perms]) => {
+                const url = new URL(origin);
+                const hostname = url.hostname;
+                
+                return (
+                  <div key={origin} className="settings-item" style={{ flexDirection: "column", alignItems: "stretch", gap: "12px", padding: "16px" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                      <div style={{ fontWeight: 600, fontSize: "14px", color: "var(--fg-strong)" }}>{hostname}</div>
+                      <div style={{ fontSize: "12px", color: "var(--fg-secondary)" }}>{origin}</div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "4px" }}>
+                      {Object.entries(perms).map(([category, decision]) => (
+                        <div key={category} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "13px", color: "var(--fg-base)" }}>
+                          <div style={{ display: "flex", flexDirection: "column" }}>
+                            <span style={{ textTransform: "capitalize", fontWeight: 500 }}>{category}</span>
+                            <span style={{ color: decision === "allow" ? "var(--success)" : "var(--error)", fontSize: "12px" }}>
+                              {decision === "allow" ? "Allow" : "Block"}
+                            </span>
+                          </div>
+                          <button 
+                            className="settings-button" 
+                            title="Reset permission"
+                            style={{ padding: "4px 8px", fontSize: "12px" }}
+                            onClick={() => void window.lilyBrowser.removePermission(origin, category)}
+                          >
+                            Reset
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="settings-item" style={{ borderTop: "1px solid var(--border-base)" }}>
+                <button
+                  type="button"
+                  className="settings-button"
+                  onClick={() => {
+                    if (window.confirm("Are you sure you want to clear ALL saved site permissions? This cannot be undone.")) {
+                      void window.lilyBrowser.clearAllPermissions();
+                    }
+                  }}
+                  style={{ alignSelf: "flex-start" }}
+                >
+                  Clear All Permissions
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
       </div>
     </section>
   );

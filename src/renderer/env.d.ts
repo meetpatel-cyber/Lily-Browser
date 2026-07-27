@@ -16,6 +16,9 @@ declare global {
       updateBookmark: (bookmarkId: string, url: string, title: string) => Promise<void>;
       clearHistory: () => Promise<void>;
       clearBrowsingData: (options: ClearBrowsingDataOptions) => Promise<void>;
+      resolvePermission: (reqId: string, decision: "allow" | "block" | "dismiss") => Promise<void>;
+      removePermission: (origin: string, category: string) => Promise<void>;
+      clearAllPermissions: () => Promise<void>;
       removeHistoryEntry: (historyId: string) => Promise<void>;
       openDownload: (downloadId: string) => Promise<void>;
       revealDownload: (downloadId: string) => Promise<void>;

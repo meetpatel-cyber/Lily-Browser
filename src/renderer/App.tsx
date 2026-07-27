@@ -6,9 +6,10 @@ import { TabStrip } from "./components/TabStrip";
 import { Toolbar } from "./components/Toolbar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { FindInPage } from "./components/FindInPage";
+import { PermissionBanner } from "./components/PermissionBanner";
 import { addressLabel, toNavigationUrl } from "./lib/navigation";
 
-const emptyState: BrowserState = { tabs: [], activeTabId: "", bookmarks: [], history: [], downloads: [], preferences: { searchEngine: "duckduckgo", startupBehavior: "continue", downloadLocation: "", askWhereToSave: false, appearance: "system" }, effectiveTheme: "light" };
+const emptyState: BrowserState = { tabs: [], activeTabId: "", bookmarks: [], history: [], downloads: [], preferences: { searchEngine: "duckduckgo", startupBehavior: "continue", downloadLocation: "", askWhereToSave: false, appearance: "system" }, permissions: {}, pendingPermissions: [], effectiveTheme: "light" };
 
 export default function App() {
   const [browserState, setBrowserState] = useState<BrowserState>(emptyState);
@@ -167,6 +168,8 @@ export default function App() {
     }
   }, [activeTab?.id, closeLibrary]);
 
+  const activePendingPermission = browserState.pendingPermissions?.find(p => p.tabId === browserState.activeTabId);
+
   return (
     <main className={`browser-shell theme-${browserState.effectiveTheme || "light"}`}>
       <header className="browser-chrome">
@@ -205,6 +208,12 @@ export default function App() {
             onClose={() => void window.lilyBrowser.setFindVisible(activeTab.id, false)} 
           />
         )}
+        {activePendingPermission && !librarySection && !isSettingsVisible && (
+          <PermissionBanner 
+            request={activePendingPermission} 
+            onResolve={(reqId, decision) => void window.lilyBrowser.resolvePermission(reqId, decision)} 
+          />
+        )}
       </header>
       <section className="browser-surface" ref={browserSurfaceRef} aria-label="Browser content">
         {librarySection ? <LibraryPanel
@@ -228,6 +237,7 @@ export default function App() {
           onCancelDownload={(downloadId) => void window.lilyBrowser.cancelDownload(downloadId)}
         /> : isSettingsVisible && browserState.preferences ? <SettingsPanel
           preferences={browserState.preferences}
+          permissions={browserState.permissions}
           onUpdatePreferences={(updates) => void window.lilyBrowser.updatePreferences(updates)}
           onClose={closeLibrary}
         /> : activeTab?.isNewTab && <NewTabPage key={activeTab.id} onNavigate={submitAddress} />}

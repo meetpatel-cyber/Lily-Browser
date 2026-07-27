@@ -54,6 +54,8 @@ export interface BrowserState {
   history: HistoryEntry[];
   downloads: DownloadRecord[];
   preferences: BrowserPreferences;
+  permissions: SitePermissions;
+  pendingPermissions: PendingPermission[];
   effectiveTheme: "light" | "dark";
 }
 export interface BrowserBounds {
@@ -67,6 +69,18 @@ export interface ClearBrowsingDataOptions {
   history: boolean;
   cookies: boolean;
   cache: boolean;
+}
+
+export type PermissionDecision = "allow" | "block";
+export type PermissionCategory = "camera" | "microphone" | "cameraAndMicrophone" | "notifications" | "geolocation";
+
+export type SitePermissions = Record<string, Partial<Record<PermissionCategory, PermissionDecision>>>;
+
+export interface PendingPermission {
+  id: string;
+  tabId: string;
+  origin: string;
+  category: PermissionCategory;
 }
 
 export interface Bookmark {

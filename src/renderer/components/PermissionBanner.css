@@ -1,0 +1,95 @@
+.permission-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background-color: var(--bg-panel);
+  border-bottom: 1px solid var(--border-base);
+  font-size: 13px;
+  animation: slideDown 0.2s ease-out;
+  color: var(--fg-base);
+  z-index: 100;
+  -webkit-app-region: no-drag;
+}
+
+.permission-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.permission-banner-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-secondary);
+}
+
+.permission-banner-text {
+  color: var(--fg-base);
+}
+
+.permission-banner-text strong {
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.permission-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.permission-banner-btn {
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border-base);
+  background: var(--bg-base);
+  color: var(--fg-base);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  -webkit-app-region: no-drag;
+}
+
+.permission-banner-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+}
+
+.permission-banner-btn.primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.permission-banner-btn.primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.permission-banner-btn.icon-only {
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border-color: transparent;
+  color: var(--fg-secondary);
+}
+
+.permission-banner-btn.icon-only:hover {
+  background: var(--bg-hover);
+  color: var(--fg-strong);
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
