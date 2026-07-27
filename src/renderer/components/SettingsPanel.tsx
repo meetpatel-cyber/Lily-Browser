@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useState } from "react";
 import type { AppearanceMode, BrowserPreferences, SearchEngine, StartupBehavior } from "../../shared/browser";
 import { Icon } from "./Icon";
 
@@ -9,6 +10,30 @@ interface SettingsPanelProps {
 }
 
 export function SettingsPanel({ preferences, onUpdatePreferences, onClose }: SettingsPanelProps) {
+  const [clearHistory, setClearHistory] = useState(true);
+  const [clearCookies, setClearCookies] = useState(false);
+  const [clearCache, setClearCache] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
+
+  const handleClearData = async () => {
+    if (!clearHistory && !clearCookies && !clearCache) return;
+    if (!window.confirm("Are you sure you want to clear the selected browsing data?")) return;
+    
+    setIsClearing(true);
+    setClearError(null);
+    try {
+      await window.lilyBrowser.clearBrowsingData({ history: clearHistory, cookies: clearCookies, cache: clearCache });
+      setClearHistory(false);
+      setClearCookies(false);
+      setClearCache(false);
+    } catch {
+      setClearError("Failed to clear some browsing data. Please try again.");
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
   return (
     <section className="library-panel" aria-label="Settings">
       <div className="library-panel__header">
@@ -109,6 +134,63 @@ export function SettingsPanel({ preferences, onUpdatePreferences, onClose }: Set
                 Ask where to save each file before downloading
               </label>
             </div>
+          </div>
+        </div>
+
+        <div className="library-panel__section-heading" style={{ marginTop: "24px" }}>
+          <h3>Privacy</h3>
+        </div>
+
+        <div className="settings-group">
+          <div className="settings-item" style={{ flexDirection: "column", alignItems: "flex-start", gap: "12px" }}>
+            <div className="settings-item__info">
+              <label>Clear Browsing Data</label>
+              <p>Select the data you want to remove from Lily Browser.</p>
+            </div>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "4px" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "13px", color: "var(--fg-base)" }}>
+                <input
+                  type="checkbox"
+                  checked={clearHistory}
+                  onChange={(e) => setClearHistory(e.target.checked)}
+                  disabled={isClearing}
+                />
+                Browsing History
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "13px", color: "var(--fg-base)" }}>
+                <input
+                  type="checkbox"
+                  checked={clearCookies}
+                  onChange={(e) => setClearCookies(e.target.checked)}
+                  disabled={isClearing}
+                />
+                Cookies and Site Data
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "13px", color: "var(--fg-base)" }}>
+                <input
+                  type="checkbox"
+                  checked={clearCache}
+                  onChange={(e) => setClearCache(e.target.checked)}
+                  disabled={isClearing}
+                />
+                Cached Images and Files
+              </label>
+            </div>
+
+            {clearError && (
+              <p style={{ margin: "4px 0 0", color: "var(--error)", fontSize: "13px" }}>{clearError}</p>
+            )}
+
+            <button
+              type="button"
+              className="settings-button"
+              onClick={handleClearData}
+              disabled={isClearing || (!clearHistory && !clearCookies && !clearCache)}
+              style={{ marginTop: "8px", alignSelf: "flex-start" }}
+            >
+              {isClearing ? "Clearing..." : "Clear Data"}
+            </button>
           </div>
         </div>
       </div>

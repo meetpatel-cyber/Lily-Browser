@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import type { BrowserBounds, BrowserCommand, BrowserState } from "../shared/browser";
+import type { BrowserBounds, BrowserCommand, BrowserState, ClearBrowsingDataOptions } from "../shared/browser";
 
 declare global {
   interface Window {
@@ -15,6 +15,7 @@ declare global {
       removeBookmark: (bookmarkId: string) => Promise<void>;
       updateBookmark: (bookmarkId: string, url: string, title: string) => Promise<void>;
       clearHistory: () => Promise<void>;
+      clearBrowsingData: (options: ClearBrowsingDataOptions) => Promise<void>;
       removeHistoryEntry: (historyId: string) => Promise<void>;
       openDownload: (downloadId: string) => Promise<void>;
       revealDownload: (downloadId: string) => Promise<void>;

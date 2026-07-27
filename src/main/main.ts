@@ -1066,6 +1066,29 @@ function registerIpcHandlers(): void {
     recentHistoryUrls.clear();
     publishState();
   });
+  ipcMain.handle("browser:clear-browsing-data", async (_event, options: { history: boolean; cookies: boolean; cache: boolean }) => {
+    if (!options || typeof options !== "object") return;
+    try {
+      if (options.history) {
+        dataStore.clearHistory();
+        recentHistoryUrls.clear();
+      }
+      if (options.cookies) {
+        await session.defaultSession.clearStorageData({
+          storages: ["cookies", "filesystem", "indexdb", "localstorage", "serviceworkers", "cachestorage"]
+        });
+      }
+      if (options.cache) {
+        await session.defaultSession.clearCache();
+      }
+      if (options.history) {
+        publishState();
+      }
+    } catch (error) {
+      console.error("Failed to clear browsing data:", error);
+      throw error;
+    }
+  });
   ipcMain.handle("browser:remove-history-entry", (_event, historyId: unknown) => {
     if (isIdentifier(historyId)) {
       dataStore.removeHistoryEntry(historyId);

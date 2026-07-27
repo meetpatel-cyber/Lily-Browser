@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { BrowserBounds, BrowserCommand, BrowserState } from "../shared/browser";
+import type { BrowserBounds, BrowserCommand, BrowserState, ClearBrowsingDataOptions } from "../shared/browser";
 
 contextBridge.exposeInMainWorld("lilyBrowser", {
   getState: (): Promise<BrowserState> => ipcRenderer.invoke("browser:get-state"),
@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("lilyBrowser", {
   removeBookmark: (bookmarkId: string): Promise<void> => ipcRenderer.invoke("browser:remove-bookmark", bookmarkId),
   updateBookmark: (bookmarkId: string, url: string, title: string): Promise<void> => ipcRenderer.invoke("browser:update-bookmark", bookmarkId, url, title),
   clearHistory: (): Promise<void> => ipcRenderer.invoke("browser:clear-history"),
+  clearBrowsingData: (options: ClearBrowsingDataOptions): Promise<void> => ipcRenderer.invoke("browser:clear-browsing-data", options),
   removeHistoryEntry: (historyId: string): Promise<void> => ipcRenderer.invoke("browser:remove-history-entry", historyId),
   openDownload: (downloadId: string): Promise<void> => ipcRenderer.invoke("browser:open-download", downloadId),
   revealDownload: (downloadId: string): Promise<void> => ipcRenderer.invoke("browser:reveal-download", downloadId),

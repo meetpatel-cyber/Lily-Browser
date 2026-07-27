@@ -56,12 +56,17 @@ export interface BrowserState {
   preferences: BrowserPreferences;
   effectiveTheme: "light" | "dark";
 }
-
 export interface BrowserBounds {
   x: number;
   y: number;
   width: number;
   height: number;
+}
+
+export interface ClearBrowsingDataOptions {
+  history: boolean;
+  cookies: boolean;
+  cache: boolean;
 }
 
 export interface Bookmark {
