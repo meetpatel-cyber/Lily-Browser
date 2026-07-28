@@ -101,7 +101,13 @@ export function SettingsPanel({ preferences, permissions, onUpdatePreferences, o
               <option value="dark">Dark</option>
             </select>
           </div>
+        </div>
 
+        <div className="library-panel__section-heading" style={{ marginTop: "24px" }}>
+          <h3>Downloads</h3>
+        </div>
+
+        <div className="settings-group">
           <div className="settings-item">
             <div className="settings-item__info">
               <label>Download Location</label>
@@ -128,6 +134,7 @@ export function SettingsPanel({ preferences, permissions, onUpdatePreferences, o
                 <input
                   id="ask-where-to-save"
                   type="checkbox"
+                  className="settings-checkbox"
                   checked={preferences.askWhereToSave}
                   onChange={(e) => onUpdatePreferences({ askWhereToSave: e.target.checked })}
                   style={{ cursor: "pointer" }}
@@ -139,7 +146,7 @@ export function SettingsPanel({ preferences, permissions, onUpdatePreferences, o
         </div>
 
         <div className="library-panel__section-heading" style={{ marginTop: "24px" }}>
-          <h3>Privacy</h3>
+          <h3>Privacy & Security</h3>
         </div>
 
         <div className="settings-group">
@@ -153,6 +160,7 @@ export function SettingsPanel({ preferences, permissions, onUpdatePreferences, o
               <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "13px", color: "var(--fg-base)" }}>
                 <input
                   type="checkbox"
+                  className="settings-checkbox"
                   checked={clearHistory}
                   onChange={(e) => setClearHistory(e.target.checked)}
                   disabled={isClearing}
@@ -162,6 +170,7 @@ export function SettingsPanel({ preferences, permissions, onUpdatePreferences, o
               <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "13px", color: "var(--fg-base)" }}>
                 <input
                   type="checkbox"
+                  className="settings-checkbox"
                   checked={clearCookies}
                   onChange={(e) => setClearCookies(e.target.checked)}
                   disabled={isClearing}
@@ -171,6 +180,7 @@ export function SettingsPanel({ preferences, permissions, onUpdatePreferences, o
               <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "13px", color: "var(--fg-base)" }}>
                 <input
                   type="checkbox"
+                  className="settings-checkbox"
                   checked={clearCache}
                   onChange={(e) => setClearCache(e.target.checked)}
                   disabled={isClearing}
@@ -185,7 +195,7 @@ export function SettingsPanel({ preferences, permissions, onUpdatePreferences, o
 
             <button
               type="button"
-              className="settings-button"
+              className="settings-button settings-button--danger"
               onClick={handleClearData}
               disabled={isClearing || (!clearHistory && !clearCookies && !clearCache)}
               style={{ marginTop: "8px", alignSelf: "flex-start" }}
@@ -193,13 +203,15 @@ export function SettingsPanel({ preferences, permissions, onUpdatePreferences, o
               {isClearing ? "Clearing..." : "Clear Data"}
             </button>
           </div>
-        </div>
 
-        <div className="library-panel__section-heading" style={{ marginTop: "24px" }}>
-          <h3>Site Permissions</h3>
-        </div>
-        
-        <div className="settings-group">
+          <div style={{ borderTop: "1px solid var(--border-base)", margin: "8px 0" }} />
+          
+          <div className="settings-item">
+            <div className="settings-item__info">
+              <label>Site Permissions</label>
+              <p>Control what sites are allowed to do.</p>
+            </div>
+          </div>
           {(!permissions || Object.keys(permissions).length === 0) ? (
             <div className="settings-item">
               <p style={{ color: "var(--fg-muted)", fontSize: "13px" }}>No site permissions saved.</p>
@@ -211,10 +223,10 @@ export function SettingsPanel({ preferences, permissions, onUpdatePreferences, o
                 const hostname = url.hostname;
                 
                 return (
-                  <div key={origin} className="settings-item" style={{ flexDirection: "column", alignItems: "stretch", gap: "12px", padding: "16px" }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                      <div style={{ fontWeight: 600, fontSize: "14px", color: "var(--fg-strong)" }}>{hostname}</div>
-                      <div style={{ fontSize: "12px", color: "var(--fg-secondary)" }}>{origin}</div>
+                  <div key={origin} className="settings-item" style={{ flexDirection: "column", alignItems: "stretch", gap: "12px", padding: "16px", background: "var(--bg-panel)", border: "1px solid var(--border-base)", borderRadius: "8px" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: "14px", color: "var(--fg-strong)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{hostname}</div>
+                      <div style={{ fontSize: "12px", color: "var(--fg-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{origin}</div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "4px" }}>
                       {Object.entries(perms).map(([category, decision]) => (
@@ -239,10 +251,10 @@ export function SettingsPanel({ preferences, permissions, onUpdatePreferences, o
                   </div>
                 );
               })}
-              <div className="settings-item" style={{ borderTop: "1px solid var(--border-base)" }}>
+              <div className="settings-item" style={{ marginTop: "8px" }}>
                 <button
                   type="button"
-                  className="settings-button"
+                  className="settings-button settings-button--danger"
                   onClick={() => {
                     if (window.confirm("Are you sure you want to clear ALL saved site permissions? This cannot be undone.")) {
                       void window.lilyBrowser.clearAllPermissions();

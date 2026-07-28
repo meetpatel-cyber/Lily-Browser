@@ -12,6 +12,7 @@ interface TabRecord {
   lastFailedUrl?: string;
   isShowingError?: boolean;
   currentFindRequestId?: number;
+  isRestoredNavigation?: boolean;
 }
 
 const MAX_URL_LENGTH = 8_192;
@@ -423,6 +424,10 @@ function showNavigationFailure(record: TabRecord, rawMessage: string, errorCode?
 }
 
 function recordHistoryVisit(record: TabRecord): void {
+  if (record.isRestoredNavigation) {
+    record.isRestoredNavigation = false;
+    return;
+  }
   const { url, title, error, isNewTab } = record.state;
   if (isNewTab || error || record.lastFailedUrl === url || !isAllowedNavigation(url)) return;
   const now = Date.now();
@@ -518,7 +523,8 @@ function attachBrowserEvents(record: TabRecord, view: WebContentsView): void {
   });
   contents.on("did-finish-load", () => recordHistoryVisit(record));
   contents.on("did-fail-load", (_event, errorCode, errorDescription, validatedUrl, isMainFrame) => {
-    if (isMainFrame && errorCode !== -3 && errorDescription !== "ERR_ABORTED") {
+    if (isMainFrame && errorCode !== -3) { // ERR_ABORTED is -3
+      record.isRestoredNavigation = false;
       showNavigationFailure(record, errorDescription, errorCode, validatedUrl);
     }
   });
@@ -547,12 +553,13 @@ function ensureView(record: TabRecord): WebContentsView {
   return view;
 }
 
-function navigateTab(tabId: string, url: string): void {
+function navigateTab(tabId: string, url: string, isRestoring = false): void {
   const record = tabs.get(tabId);
   if (!record || !isAllowedNavigation(url)) return;
   const view = ensureView(record);
   record.lastFailedUrl = undefined;
   record.isShowingError = false;
+  record.isRestoredNavigation = isRestoring;
   record.state = { ...record.state, url, title: fallbackTitle(url), favicon: undefined, isNewTab: false, isLoading: true, error: undefined, findState: undefined };
   if (tabId === activeTabId) applyViewLayout();
   persistSession();
@@ -968,7 +975,7 @@ function restoreSession(): void {
     });
     activeTabId = records[Math.min(restored.activeIndex, records.length - 1)].record.state.id;
     for (const { record, url } of records) {
-      if (url) navigateTab(record.state.id, url);
+      if (url) navigateTab(record.state.id, url, true);
     }
   } finally {
     isRestoringSession = false;

@@ -330,6 +330,54 @@ button { -webkit-app-region: no-drag; }
   box-shadow: 0 0 0 3px rgb(99 102 241 / 13%);
 }
 
+.settings-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  padding: 0 14px;
+  background: var(--bg-subtle);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--fg-base);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+.settings-button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--fg-strong);
+}
+.settings-button:active:not(:disabled) {
+  background: var(--bg-active);
+}
+.settings-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.settings-button:focus-visible {
+  outline: 0;
+  border-color: var(--accent-focus);
+  box-shadow: 0 0 0 3px rgb(99 102 241 / 13%);
+}
+
+.settings-button--danger {
+  color: var(--error);
+}
+.settings-button--danger:hover:not(:disabled) {
+  background: var(--bg-error-subtle);
+  color: var(--error);
+}
+
+.settings-checkbox {
+  accent-color: var(--accent);
+}
+.settings-checkbox:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
 @media (max-width: 720px) {
   .tab { min-width: 82px; }
   .tab__close { display: none; }
