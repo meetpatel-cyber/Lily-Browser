@@ -652,6 +652,31 @@ function closeTab(tabId: string): void {
   }
 }
 
+function duplicateTab(tabId: string): void {
+  const original = tabs.get(tabId);
+  if (!original || original.state.isNewTab || !original.state.url) return;
+  
+  const newRecord = makeNewTab();
+  if (original.state.zoomFactor !== undefined) {
+    newRecord.state.zoomFactor = original.state.zoomFactor;
+  }
+  
+  const ordered = [...tabs.values()];
+  const targetIndex = ordered.findIndex(r => r.state.id === tabId);
+  if (targetIndex !== -1) {
+    ordered.splice(targetIndex + 1, 0, newRecord);
+    tabs.clear();
+    for (const r of ordered) {
+      tabs.set(r.state.id, r);
+    }
+  } else {
+    tabs.set(newRecord.state.id, newRecord);
+  }
+  
+  activeTabId = newRecord.state.id;
+  navigateTab(newRecord.state.id, original.state.url);
+}
+
 function reopenTab(): void {
   if (recentlyClosedTabs.length === 0) return;
   const state = recentlyClosedTabs.pop()!;
@@ -1096,6 +1121,10 @@ function registerIpcHandlers(): void {
             }
           }
         }
+      },
+      {
+        label: "Duplicate Tab",
+        click: () => duplicateTab(tabId)
       },
       { type: "separator" },
       {
