@@ -9,7 +9,7 @@ import { FindInPage } from "./components/FindInPage";
 import { PermissionBanner } from "./components/PermissionBanner";
 import { addressLabel, toNavigationUrl } from "./lib/navigation";
 
-const emptyState: BrowserState = { tabs: [], activeTabId: "", bookmarks: [], history: [], downloads: [], preferences: { searchEngine: "duckduckgo", startupBehavior: "continue", downloadLocation: "", askWhereToSave: false, appearance: "system" }, permissions: {}, pendingPermissions: [], effectiveTheme: "light" };
+const emptyState: BrowserState = { tabs: [], tabGroups: {}, activeTabId: "", bookmarks: [], history: [], downloads: [], preferences: { searchEngine: "duckduckgo", startupBehavior: "continue", downloadLocation: "", askWhereToSave: false, appearance: "system" }, permissions: {}, pendingPermissions: [], effectiveTheme: "light" };
 
 export default function App() {
   const [browserState, setBrowserState] = useState<BrowserState>(emptyState);
@@ -175,6 +175,7 @@ export default function App() {
       <header className="browser-chrome">
         <TabStrip
           tabs={browserState.tabs}
+          tabGroups={browserState.tabGroups}
           activeTabId={browserState.activeTabId}
           onSelect={handleSelectTab}
           onClose={(tabId) => void window.lilyBrowser.closeTab(tabId)}

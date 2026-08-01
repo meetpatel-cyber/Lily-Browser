@@ -29,6 +29,7 @@ let forceCloseForActiveDownloads = false;
 let dataStore: BrowserDataStore;
 let downloads: StoredDownload[] = [];
 const tabs = new Map<string, TabRecord>();
+const tabGroups = new Map<string, import("../shared/browser").TabGroup>();
 
 const pendingPermissions: PendingPermission[] = [];
 const pendingPermissionCallbacks = new Map<string, Array<(allowed: boolean) => void>>();
@@ -98,6 +99,7 @@ function getSnapshot(): BrowserState {
 
   return {
     tabs: [...tabs.values()].map(({ state }) => ({ ...state })),
+    tabGroups: Object.fromEntries(tabGroups.entries()),
     activeTabId,
     bookmarks: dataStore.getBookmarks(),
     history: dataStore.getHistory(),
@@ -113,9 +115,31 @@ function enforceTabOrder(): void {
   const ordered = [...tabs.values()];
   const pinned = ordered.filter(t => t.state.isPinned);
   const unpinned = ordered.filter(t => !t.state.isPinned);
+  
+  const groupedUnpinned: typeof unpinned = [];
+  const seenIds = new Set<string>();
+  for (const t of unpinned) {
+    if (seenIds.has(t.state.id)) continue;
+    groupedUnpinned.push(t);
+    seenIds.add(t.state.id);
+    
+    if (t.state.groupId) {
+      const others = unpinned.filter(o => o.state.groupId === t.state.groupId && o.state.id !== t.state.id);
+      for (const o of others) {
+        groupedUnpinned.push(o);
+        seenIds.add(o.state.id);
+      }
+    }
+  }
+
   tabs.clear();
-  for (const r of [...pinned, ...unpinned]) {
+  for (const r of [...pinned, ...groupedUnpinned]) {
     tabs.set(r.state.id, r);
+  }
+
+  const activeGroups = new Set(unpinned.map(t => t.state.groupId).filter(Boolean));
+  for (const id of tabGroups.keys()) {
+    if (!activeGroups.has(id)) tabGroups.delete(id);
   }
 }
 
@@ -648,6 +672,8 @@ function closeTab(tabId: string): void {
   
   releaseView(record);
   tabs.delete(tabId);
+  enforceTabOrder();
+  
   if (tabs.size === 0) {
     activeTabId = "";
     createTab();
@@ -731,6 +757,31 @@ function togglePinTab(tabId: string): void {
   enforceTabOrder();
   persistSession();
   syncVisibleState();
+  publishState();
+}
+
+function setTabGroup(tabId: string, groupId: string | undefined): void {
+  const record = tabs.get(tabId);
+  if (!record || record.state.isPinned) return;
+  record.state.groupId = groupId;
+  enforceTabOrder();
+  persistSession();
+  publishState();
+}
+
+function createTabGroup(tabId: string): void {
+  const record = tabs.get(tabId);
+  if (!record || record.state.isPinned) return;
+  const groupId = randomUUID();
+  tabGroups.set(groupId, { id: groupId, name: "", color: "grey" });
+  setTabGroup(tabId, groupId);
+}
+
+function updateTabGroup(groupId: string, updates: Partial<import("../shared/browser").TabGroup>): void {
+  const group = tabGroups.get(groupId);
+  if (!group) return;
+  Object.assign(group, updates);
+  persistSession();
   publishState();
 }
 
@@ -1128,6 +1179,24 @@ function registerIpcHandlers(): void {
   });
   ipcMain.handle("browser:run-command", (_event, command: unknown) => { if (typeof command === "string" && validCommands.has(command as BrowserCommand)) runBrowserCommand(command as BrowserCommand); });
 
+  ipcMain.handle("browser:update-tab-group", (_event, groupId: unknown, updates: unknown) => {
+    if (typeof groupId === "string" && updates && typeof updates === "object") {
+      updateTabGroup(groupId, updates as Partial<import("../shared/browser").TabGroup>);
+    }
+  });
+
+  ipcMain.handle("browser:show-tab-group-context-menu", (_event, groupId: unknown) => {
+    if (typeof groupId !== "string" || !tabGroups.has(groupId)) return;
+    const colors: import("../shared/browser").TabGroupColor[] = ["grey", "blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange"];
+    const template: MenuItemConstructorOptions[] = colors.map(color => ({
+      label: color.charAt(0).toUpperCase() + color.slice(1),
+      type: "radio",
+      checked: tabGroups.get(groupId)?.color === color,
+      click: () => updateTabGroup(groupId, { color })
+    }));
+    Menu.buildFromTemplate(template).popup();
+  });
+
   ipcMain.handle("browser:show-tab-context-menu", (_event, tabId: unknown) => {
     if (!isIdentifier(tabId) || !tabs.has(tabId)) return;
     const template: MenuItemConstructorOptions[] = [
@@ -1159,6 +1228,24 @@ function registerIpcHandlers(): void {
         label: tabs.get(tabId)?.state.isPinned ? "Unpin Tab" : "Pin Tab",
         click: () => togglePinTab(tabId)
       },
+      { type: "separator" },
+      {
+        label: "Add Tab to New Group",
+        enabled: !tabs.get(tabId)?.state.isPinned,
+        click: () => createTabGroup(tabId)
+      },
+      ...(tabs.get(tabId)?.state.groupId ? [{
+        label: "Remove from Group",
+        click: () => setTabGroup(tabId, undefined)
+      }] : []),
+      ...(tabGroups.size > 0 ? [{
+        label: "Add Tab to Group",
+        enabled: !tabs.get(tabId)?.state.isPinned,
+        submenu: Array.from(tabGroups.values()).map(g => ({
+          label: g.name || "Unnamed Group",
+          click: () => setTabGroup(tabId, g.id)
+        }))
+      }] : []),
       { type: "separator" },
       {
         label: "Close Tab",

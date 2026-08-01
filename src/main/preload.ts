@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld("lilyBrowser", {
   closeTab: (tabId: string): Promise<void> => ipcRenderer.invoke("browser:close-tab", tabId),
   navigate: (tabId: string, url: string): Promise<void> => ipcRenderer.invoke("browser:navigate", tabId, url),
   showTabContextMenu: (tabId: string): Promise<void> => ipcRenderer.invoke("browser:show-tab-context-menu", tabId),
+  showTabGroupContextMenu: (groupId: string): Promise<void> => ipcRenderer.invoke("browser:show-tab-group-context-menu", groupId),
+  updateTabGroup: (groupId: string, updates: Partial<import("../shared/browser").TabGroup>): Promise<void> => ipcRenderer.invoke("browser:update-tab-group", groupId, updates),
   runCommand: (command: BrowserCommand): Promise<void> => ipcRenderer.invoke("browser:run-command", command),
   toggleBookmark: (tabId: string): Promise<void> => ipcRenderer.invoke("browser:toggle-bookmark", tabId),
   removeBookmark: (bookmarkId: string): Promise<void> => ipcRenderer.invoke("browser:remove-bookmark", bookmarkId),

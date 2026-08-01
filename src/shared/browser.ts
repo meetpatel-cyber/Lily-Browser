@@ -34,6 +34,14 @@ export interface BrowserTab {
   findState?: FindState;
   zoomFactor?: number;
   isPinned?: boolean;
+  groupId?: string;
+}
+
+export type TabGroupColor = "grey" | "blue" | "red" | "yellow" | "green" | "pink" | "purple" | "cyan" | "orange";
+export interface TabGroup {
+  id: string;
+  name: string;
+  color: TabGroupColor;
 }
 
 export type SearchEngine = "duckduckgo" | "google" | "bing";
@@ -50,6 +58,7 @@ export interface BrowserPreferences {
 
 export interface BrowserState {
   tabs: BrowserTab[];
+  tabGroups: Record<string, TabGroup>;
   activeTabId: string;
   bookmarks: Bookmark[];
   history: HistoryEntry[];

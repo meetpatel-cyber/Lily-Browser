@@ -11,6 +11,8 @@ declare global {
       closeTab: (tabId: string) => Promise<void>;
       navigate: (tabId: string, url: string) => Promise<void>;
       showTabContextMenu: (tabId: string) => Promise<void>;
+      showTabGroupContextMenu: (groupId: string) => Promise<void>;
+      updateTabGroup: (groupId: string, updates: Partial<import("../shared/browser").TabGroup>) => Promise<void>;
       runCommand: (command: BrowserCommand) => Promise<void>;
       toggleBookmark: (tabId: string) => Promise<void>;
       removeBookmark: (bookmarkId: string) => Promise<void>;
