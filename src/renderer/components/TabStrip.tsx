@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import type { BrowserTab } from "../../shared/browser";
 import { Icon } from "./Icon";
 
@@ -25,9 +25,32 @@ function TabFavicon({ favicon, isNewTab }: { favicon?: string; isNewTab: boolean
 }
 
 export function TabStrip({ tabs, activeTabId, onSelect, onClose, onCreate }: TabStripProps) {
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (listRef.current) {
+      const activeEl = listRef.current.querySelector('.tab--active');
+      if (activeEl) {
+        activeEl.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+      }
+    }
+  }, [activeTabId, tabs.length]);
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (e.deltaY !== 0 && e.deltaX === 0) {
+      e.currentTarget.scrollLeft += e.deltaY;
+    }
+  };
+
   return (
     <div className="tab-strip" aria-label="Browser tabs">
-      <div className="tab-list" role="tablist" aria-label="Open tabs">
+      <div 
+        className="tab-list" 
+        role="tablist" 
+        aria-label="Open tabs"
+        ref={listRef}
+        onWheel={handleWheel}
+      >
         {tabs.map((tab) => (
           <div key={tab.id} className={`tab ${tab.id === activeTabId ? "tab--active" : ""}`} role="presentation">
             <button className="tab__target" role="tab" aria-selected={tab.id === activeTabId} onClick={() => onSelect(tab.id)} title={tab.title}>
