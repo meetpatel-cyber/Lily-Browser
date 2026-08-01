@@ -1074,6 +1074,57 @@ function registerIpcHandlers(): void {
     if (isIdentifier(tabId) && typeof url === "string" && isAllowedNavigation(url)) navigateTab(tabId, url);
   });
   ipcMain.handle("browser:run-command", (_event, command: unknown) => { if (typeof command === "string" && validCommands.has(command as BrowserCommand)) runBrowserCommand(command as BrowserCommand); });
+
+  ipcMain.handle("browser:show-tab-context-menu", (_event, tabId: unknown) => {
+    if (!isIdentifier(tabId) || !tabs.has(tabId)) return;
+    const template: MenuItemConstructorOptions[] = [
+      {
+        label: "New Tab",
+        accelerator: "CmdOrCtrl+T",
+        click: () => createTab()
+      },
+      {
+        label: "Reload",
+        accelerator: "CmdOrCtrl+R",
+        click: () => {
+          const record = tabs.get(tabId);
+          if (record?.view) {
+            if (record.isShowingError && record.lastFailedUrl) {
+              navigateTab(tabId, record.lastFailedUrl);
+            } else {
+              record.view.webContents.reload();
+            }
+          }
+        }
+      },
+      { type: "separator" },
+      {
+        label: "Close Tab",
+        accelerator: "CmdOrCtrl+W",
+        click: () => closeTab(tabId)
+      },
+      {
+        label: "Close Other Tabs",
+        click: () => {
+          const toClose = [...tabs.values()].filter(t => t.state.id !== tabId);
+          toClose.forEach(t => closeTab(t.state.id));
+        }
+      },
+      {
+        label: "Close Tabs to the Right",
+        click: () => {
+          const ordered = [...tabs.values()];
+          const index = ordered.findIndex(t => t.state.id === tabId);
+          if (index !== -1) {
+            ordered.slice(index + 1).forEach(t => closeTab(t.state.id));
+          }
+        }
+      }
+    ];
+    const menu = Menu.buildFromTemplate(template);
+    menu.popup({ window: mainWindow ?? undefined });
+  });
+
   ipcMain.handle("browser:toggle-bookmark", (_event, tabId: unknown) => { if (isIdentifier(tabId)) toggleBookmark(tabId); });
   ipcMain.handle("browser:remove-bookmark", (_event, bookmarkId: unknown) => {
     if (isIdentifier(bookmarkId)) {

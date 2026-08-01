@@ -8,6 +8,7 @@ interface TabStripProps {
   onSelect: (tabId: string) => void;
   onClose: (tabId: string) => void;
   onCreate: () => void;
+  onContextMenu?: (tabId: string) => void;
 }
 
 function TabFavicon({ favicon, isNewTab }: { favicon?: string; isNewTab: boolean }) {
@@ -24,7 +25,7 @@ function TabFavicon({ favicon, isNewTab }: { favicon?: string; isNewTab: boolean
   return <Icon name={isNewTab ? "globe" : "search"} size={15} />;
 }
 
-export function TabStrip({ tabs, activeTabId, onSelect, onClose, onCreate }: TabStripProps) {
+export function TabStrip({ tabs, activeTabId, onSelect, onClose, onCreate, onContextMenu }: TabStripProps) {
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -52,7 +53,17 @@ export function TabStrip({ tabs, activeTabId, onSelect, onClose, onCreate }: Tab
         onWheel={handleWheel}
       >
         {tabs.map((tab) => (
-          <div key={tab.id} className={`tab ${tab.id === activeTabId ? "tab--active" : ""}`} role="presentation">
+          <div 
+            key={tab.id} 
+            className={`tab ${tab.id === activeTabId ? "tab--active" : ""}`} 
+            role="presentation"
+            onContextMenu={(e) => {
+              if (onContextMenu) {
+                e.preventDefault();
+                onContextMenu(tab.id);
+              }
+            }}
+          >
             <button className="tab__target" role="tab" aria-selected={tab.id === activeTabId} onClick={() => onSelect(tab.id)} title={tab.title}>
               <span className="tab__status" aria-hidden="true">
                 {tab.isLoading ? <span className="loading-dot" /> : <TabFavicon favicon={tab.favicon} isNewTab={tab.isNewTab} />}

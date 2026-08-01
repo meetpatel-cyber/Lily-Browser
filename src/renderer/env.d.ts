@@ -10,6 +10,7 @@ declare global {
       selectTab: (tabId: string) => Promise<void>;
       closeTab: (tabId: string) => Promise<void>;
       navigate: (tabId: string, url: string) => Promise<void>;
+      showTabContextMenu: (tabId: string) => Promise<void>;
       runCommand: (command: BrowserCommand) => Promise<void>;
       toggleBookmark: (tabId: string) => Promise<void>;
       removeBookmark: (bookmarkId: string) => Promise<void>;

@@ -179,6 +179,7 @@ export default function App() {
           onSelect={handleSelectTab}
           onClose={(tabId) => void window.lilyBrowser.closeTab(tabId)}
           onCreate={handleCreateTab}
+          onContextMenu={(tabId) => void window.lilyBrowser.showTabContextMenu(tabId)}
         />
         <Toolbar
           address={address}
