@@ -55,7 +55,7 @@ export function TabStrip({ tabs, activeTabId, onSelect, onClose, onCreate, onCon
         {tabs.map((tab) => (
           <div 
             key={tab.id} 
-            className={`tab ${tab.id === activeTabId ? "tab--active" : ""}`} 
+            className={`tab ${tab.id === activeTabId ? "tab--active" : ""} ${tab.isPinned ? "tab--pinned" : ""}`} 
             role="presentation"
             onContextMenu={(e) => {
               if (onContextMenu) {

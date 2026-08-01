@@ -98,6 +98,9 @@ button { -webkit-app-region: no-drag; }
 .tab:hover { background: var(--bg-hover); color: var(--fg-strong); }
 .tab--active { background: var(--bg-panel); border-color: var(--border-base); color: var(--fg-base); }
 .tab--active:hover { background: var(--bg-panel); }
+.tab--pinned { flex: 0 0 44px; min-width: 44px; padding: 0; }
+.tab--pinned .tab__target { padding: 0; justify-content: center; }
+.tab--pinned .tab__title, .tab--pinned .tab__close { display: none; }
 .tab__target { display: flex; min-width: 0; flex: 1; align-items: center; gap: 8px; height: 34px; padding: 0 6px 0 10px; color: inherit; background: transparent; border: 0; cursor: pointer; }
 .tab__status { display: grid; place-items: center; flex: 0 0 16px; color: var(--fg-tertiary); }
 .tab__favicon { width: 16px; height: 16px; object-fit: contain; border-radius: 2px; }

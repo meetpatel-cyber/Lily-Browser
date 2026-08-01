@@ -45,6 +45,7 @@ interface ClosedTabState {
   zoomFactor?: number;
   originalIndex: number;
   isNewTab: boolean;
+  isPinned?: boolean;
 }
 const recentlyClosedTabs: ClosedTabState[] = [];
 const MAX_CLOSED_TABS = 15;
@@ -106,6 +107,16 @@ function getSnapshot(): BrowserState {
     pendingPermissions: [...pendingPermissions],
     effectiveTheme
   };
+}
+
+function enforceTabOrder(): void {
+  const ordered = [...tabs.values()];
+  const pinned = ordered.filter(t => t.state.isPinned);
+  const unpinned = ordered.filter(t => !t.state.isPinned);
+  tabs.clear();
+  for (const r of [...pinned, ...unpinned]) {
+    tabs.set(r.state.id, r);
+  }
 }
 
 function publishState(): void {
@@ -610,7 +621,8 @@ function closeTab(tabId: string): void {
     favicon: record.state.favicon,
     zoomFactor: record.state.zoomFactor,
     originalIndex: index,
-    isNewTab: record.state.isNewTab
+    isNewTab: record.state.isNewTab,
+    isPinned: record.state.isPinned
   });
   if (recentlyClosedTabs.length > MAX_CLOSED_TABS) {
     recentlyClosedTabs.shift();
@@ -657,6 +669,7 @@ function duplicateTab(tabId: string): void {
   if (!original || original.state.isNewTab || !original.state.url) return;
   
   const newRecord = makeNewTab();
+  newRecord.state.isPinned = original.state.isPinned;
   if (original.state.zoomFactor !== undefined) {
     newRecord.state.zoomFactor = original.state.zoomFactor;
   }
@@ -673,6 +686,8 @@ function duplicateTab(tabId: string): void {
     tabs.set(newRecord.state.id, newRecord);
   }
   
+  enforceTabOrder();
+  
   activeTabId = newRecord.state.id;
   navigateTab(newRecord.state.id, original.state.url);
 }
@@ -682,6 +697,7 @@ function reopenTab(): void {
   const state = recentlyClosedTabs.pop()!;
   
   const record = makeNewTab();
+  record.state.isPinned = state.isPinned;
   if (state.zoomFactor !== undefined) {
     record.state.zoomFactor = state.zoomFactor;
   }
@@ -695,6 +711,8 @@ function reopenTab(): void {
     tabs.set(r.state.id, r);
   }
   
+  enforceTabOrder();
+  
   activeTabId = record.state.id;
   
   if (state.isNewTab && !state.url) {
@@ -704,6 +722,16 @@ function reopenTab(): void {
   } else {
     navigateTab(record.state.id, state.url);
   }
+}
+
+function togglePinTab(tabId: string): void {
+  const original = tabs.get(tabId);
+  if (!original) return;
+  original.state.isPinned = !original.state.isPinned;
+  enforceTabOrder();
+  persistSession();
+  syncVisibleState();
+  publishState();
 }
 
 function openHome(tabId: string): void {
@@ -1125,6 +1153,11 @@ function registerIpcHandlers(): void {
       {
         label: "Duplicate Tab",
         click: () => duplicateTab(tabId)
+      },
+      { type: "separator" },
+      {
+        label: tabs.get(tabId)?.state.isPinned ? "Unpin Tab" : "Pin Tab",
+        click: () => togglePinTab(tabId)
       },
       { type: "separator" },
       {

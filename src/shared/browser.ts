@@ -33,6 +33,7 @@ export interface BrowserTab {
   error?: string;
   findState?: FindState;
   zoomFactor?: number;
+  isPinned?: boolean;
 }
 
 export type SearchEngine = "duckduckgo" | "google" | "bing";
