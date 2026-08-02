@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld("lilyBrowser", {
   pauseDownload: (downloadId: string): Promise<void> => ipcRenderer.invoke("browser:pause-download", downloadId),
   resumeDownload: (downloadId: string): Promise<void> => ipcRenderer.invoke("browser:resume-download", downloadId),
   cancelDownload: (downloadId: string): Promise<void> => ipcRenderer.invoke("browser:cancel-download", downloadId),
+  removeDownload: (downloadId: string): Promise<void> => ipcRenderer.invoke("browser:remove-download", downloadId),
   findInPage: (tabId: string, text: string, forward?: boolean, findNext?: boolean) => ipcRenderer.invoke("browser:find-in-page", tabId, text, forward, findNext),
   stopFindInPage: (tabId: string, keepSelection: boolean): Promise<void> => ipcRenderer.invoke("browser:stop-find-in-page", tabId, keepSelection),
   setFindVisible: (tabId: string, visible: boolean): Promise<void> => ipcRenderer.invoke("browser:set-find-visible", tabId, visible),

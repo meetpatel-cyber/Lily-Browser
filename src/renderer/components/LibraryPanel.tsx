@@ -21,6 +21,7 @@ interface LibraryPanelProps {
   onPauseDownload: (downloadId: string) => void;
   onResumeDownload: (downloadId: string) => void;
   onCancelDownload: (downloadId: string) => void;
+  onRemoveDownload: (downloadId: string) => void;
 }
 
 function formatBytes(bytes: number): string {
@@ -252,7 +253,7 @@ function downloadStatus(download: DownloadRecord): string {
   return parts.join(" · ");
 }
 
-function DownloadList({ downloads, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload }: Pick<LibraryPanelProps, "downloads" | "onOpenDownload" | "onRevealDownload" | "onPauseDownload" | "onResumeDownload" | "onCancelDownload">) {
+function DownloadList({ downloads, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload, onRemoveDownload }: Pick<LibraryPanelProps, "downloads" | "onOpenDownload" | "onRevealDownload" | "onPauseDownload" | "onResumeDownload" | "onCancelDownload" | "onRemoveDownload">) {
   const [searchQuery, setSearchQuery] = React.useState("");
 
   if (downloads.length === 0) return <EmptyState>Downloads started from websites will appear here.</EmptyState>;
@@ -351,9 +352,16 @@ function DownloadList({ downloads, onOpenDownload, onRevealDownload, onPauseDown
                         </button>
                       </span>
                     )}
-                    {download.status === "completed" && <span className="download-actions">
-                      <button className="library-entry__action" type="button" title="Open downloaded file" aria-label={`Open ${download.filename}`} onClick={() => onOpenDownload(download.id)}><Icon name="open" size={16} /></button>
-                      <button className="library-entry__action" type="button" title="Show in folder" aria-label={`Show ${download.filename} in folder`} onClick={() => onRevealDownload(download.id)}><Icon name="folder" size={16} /></button>
+                    {download.status !== "in-progress" && <span className="download-actions">
+                      {download.status === "completed" && (
+                        <>
+                          <button className="library-entry__action" type="button" title="Open downloaded file" aria-label={`Open ${download.filename}`} onClick={() => onOpenDownload(download.id)}><Icon name="open" size={16} /></button>
+                          <button className="library-entry__action" type="button" title="Show in folder" aria-label={`Show ${download.filename} in folder`} onClick={() => onRevealDownload(download.id)}><Icon name="folder" size={16} /></button>
+                        </>
+                      )}
+                      <button className="library-entry__action" type="button" title="Remove from list" aria-label={`Remove ${download.filename} from list`} onClick={() => onRemoveDownload(download.id)}>
+                        <Icon name="close" size={15} />
+                      </button>
                     </span>}
                   </div>
                 ))}
@@ -366,7 +374,7 @@ function DownloadList({ downloads, onOpenDownload, onRevealDownload, onPauseDown
   );
 }
 
-export function LibraryPanel({ section, bookmarks, history, downloads, onSectionChange, onClose, onOpenUrl, onRemoveBookmark, onUpdateBookmark, onRemoveHistory, onClearHistory, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload }: LibraryPanelProps) {
+export function LibraryPanel({ section, bookmarks, history, downloads, onSectionChange, onClose, onOpenUrl, onRemoveBookmark, onUpdateBookmark, onRemoveHistory, onClearHistory, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload, onRemoveDownload }: LibraryPanelProps) {
   return (
     <section className="library-panel" aria-label="Library">
       <div className="library-panel__header">
@@ -383,7 +391,7 @@ export function LibraryPanel({ section, bookmarks, history, downloads, onSection
         </div>
         {section === "bookmarks" && <BookmarkList bookmarks={bookmarks} onOpenUrl={onOpenUrl} onRemoveBookmark={onRemoveBookmark} onUpdateBookmark={onUpdateBookmark} />}
         {section === "history" && <HistoryList history={history} onOpenUrl={onOpenUrl} onRemoveHistory={onRemoveHistory} />}
-        {section === "downloads" && <DownloadList downloads={downloads} onOpenDownload={onOpenDownload} onRevealDownload={onRevealDownload} onPauseDownload={onPauseDownload} onResumeDownload={onResumeDownload} onCancelDownload={onCancelDownload} />}
+        {section === "downloads" && <DownloadList downloads={downloads} onOpenDownload={onOpenDownload} onRevealDownload={onRevealDownload} onPauseDownload={onPauseDownload} onResumeDownload={onResumeDownload} onCancelDownload={onCancelDownload} onRemoveDownload={onRemoveDownload} />}
       </div>
     </section>
   );

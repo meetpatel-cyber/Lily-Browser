@@ -1060,6 +1060,18 @@ function cancelDownload(downloadId: string): void {
   }
 }
 
+function removeDownload(downloadId: string): void {
+  const index = downloads.findIndex((d) => d.id === downloadId);
+  if (index === -1) return;
+  
+  const download = downloads[index];
+  if (download.status === "in-progress") return;
+  
+  downloads.splice(index, 1);
+  dataStore.saveDownloads(downloads);
+  publishState();
+}
+
 function updateDownloadError(download: StoredDownload, message: string): void {
   download.error = message;
   dataStore.saveDownloads(downloads);
@@ -1426,6 +1438,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle("browser:pause-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) pauseDownload(downloadId); });
   ipcMain.handle("browser:resume-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) resumeDownload(downloadId); });
   ipcMain.handle("browser:cancel-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) cancelDownload(downloadId); });
+  ipcMain.handle("browser:remove-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) removeDownload(downloadId); });
   ipcMain.handle("browser:choose-download-location", async () => {
     if (!mainWindow) return undefined;
     const result = await dialog.showOpenDialog(mainWindow, {

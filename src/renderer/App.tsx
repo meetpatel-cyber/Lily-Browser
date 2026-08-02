@@ -253,6 +253,7 @@ export default function App() {
           onPauseDownload={(downloadId) => void window.lilyBrowser.pauseDownload(downloadId)}
           onResumeDownload={(downloadId) => void window.lilyBrowser.resumeDownload(downloadId)}
           onCancelDownload={(downloadId) => void window.lilyBrowser.cancelDownload(downloadId)}
+          onRemoveDownload={(downloadId) => void window.lilyBrowser.removeDownload(downloadId)}
         /> : isSettingsVisible && browserState.preferences ? <SettingsPanel
           preferences={browserState.preferences}
           permissions={browserState.permissions}
