@@ -35,6 +35,8 @@ export interface BrowserTab {
   zoomFactor?: number;
   isPinned?: boolean;
   groupId?: string;
+  isAudible?: boolean;
+  isMuted?: boolean;
 }
 
 export type TabGroupColor = "grey" | "blue" | "red" | "yellow" | "green" | "pink" | "purple" | "cyan" | "orange";

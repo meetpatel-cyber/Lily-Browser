@@ -556,7 +556,18 @@ function attachBrowserEvents(record: TabRecord, view: WebContentsView): void {
       publishState();
     }
   });
-  contents.on("did-finish-load", () => recordHistoryVisit(record));
+  contents.on("did-finish-load", () => {
+    recordHistoryVisit(record);
+    if (record.state.isAudible !== contents.isCurrentlyAudible()) {
+      record.state.isAudible = contents.isCurrentlyAudible();
+      publishState();
+    }
+  });
+  contents.on("audio-state-changed", (event) => {
+    if (contents.isDestroyed()) return;
+    record.state.isAudible = event.audible;
+    publishState();
+  });
   contents.on("did-fail-load", (_event, errorCode, errorDescription, validatedUrl, isMainFrame) => {
     if (isMainFrame && errorCode !== -3) { // ERR_ABORTED is -3
       record.isRestoredNavigation = false;
@@ -782,6 +793,15 @@ function updateTabGroup(groupId: string, updates: Partial<import("../shared/brow
   if (!group) return;
   Object.assign(group, updates);
   persistSession();
+  publishState();
+}
+
+function toggleMuteTab(tabId: string): void {
+  const record = tabs.get(tabId);
+  if (!record || !record.view) return;
+  const isMuted = record.view.webContents.isAudioMuted();
+  record.view.webContents.setAudioMuted(!isMuted);
+  record.state.isMuted = !isMuted;
   publishState();
 }
 
@@ -1227,6 +1247,10 @@ function registerIpcHandlers(): void {
       {
         label: tabs.get(tabId)?.state.isPinned ? "Unpin Tab" : "Pin Tab",
         click: () => togglePinTab(tabId)
+      },
+      {
+        label: tabs.get(tabId)?.state.isMuted ? "Unmute Tab" : "Mute Tab",
+        click: () => toggleMuteTab(tabId)
       },
       { type: "separator" },
       {

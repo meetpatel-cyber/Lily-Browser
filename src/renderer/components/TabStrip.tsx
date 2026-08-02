@@ -93,6 +93,11 @@ export function TabStrip({ tabs, tabGroups, activeTabId, onSelect, onClose, onCr
                     {tab.isLoading ? <span className="loading-dot" /> : <TabFavicon favicon={tab.favicon} isNewTab={tab.isNewTab} />}
                   </span>
                   <span className="tab__title">{tab.title}</span>
+                  {tab.isMuted ? (
+                    <span className="tab__audio-icon" title="Muted"><Icon name="volume-off" size={13} /></span>
+                  ) : tab.isAudible ? (
+                    <span className="tab__audio-icon" title="Playing audio"><Icon name="volume-up" size={13} /></span>
+                  ) : null}
                 </button>
                 <button className="tab__close" type="button" aria-label={`Close ${tab.title}`} title="Close tab" onClick={() => onClose(tab.id)}>
                   <Icon name="close" size={14} />

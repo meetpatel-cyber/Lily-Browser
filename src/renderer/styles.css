@@ -105,6 +105,7 @@ button { -webkit-app-region: no-drag; }
 .tab__status { display: grid; place-items: center; flex: 0 0 16px; color: var(--fg-tertiary); }
 .tab__favicon { width: 16px; height: 16px; object-fit: contain; border-radius: 2px; }
 .tab__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; text-align: left; }
+.tab__audio-icon { display: flex; align-items: center; justify-content: center; margin-left: 2px; color: var(--fg-secondary); }
 .tab__close, .new-tab-button, .icon-button { display: grid; place-items: center; border: 0; color: var(--fg-secondary); background: transparent; cursor: pointer; transition: background-color 130ms ease, color 130ms ease; }
 .tab__close { width: 25px; height: 25px; flex: 0 0 25px; border-radius: 6px; margin-right: 4px; }
 .tab__close:hover, .new-tab-button:hover, .icon-button:hover { color: var(--fg-base); background: var(--bg-hover); }

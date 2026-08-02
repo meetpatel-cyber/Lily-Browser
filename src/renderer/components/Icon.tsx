@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-type IconName = "back" | "forward" | "reload" | "home" | "plus" | "close" | "search" | "globe" | "star" | "library" | "history" | "download" | "trash" | "folder" | "open" | "pause" | "play" | "lock" | "lock-open" | "edit" | "settings" | "camera" | "microphone" | "bell" | "map-pin";
+type IconName = "back" | "forward" | "reload" | "home" | "plus" | "close" | "search" | "globe" | "star" | "library" | "history" | "download" | "trash" | "folder" | "open" | "pause" | "play" | "lock" | "lock-open" | "edit" | "settings" | "camera" | "microphone" | "bell" | "map-pin" | "volume-up" | "volume-off";
 
 const paths: Record<IconName, ReactNode> = {
   back: <path d="m15 18-6-6 6-6" />,
@@ -27,7 +27,9 @@ const paths: Record<IconName, ReactNode> = {
   camera: <><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></>,
   microphone: <><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="22" /><line x1="8" y1="22" x2="16" y2="22" /></>,
   bell: <><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></>,
-  "map-pin": <><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></>
+  "map-pin": <><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></>,
+  "volume-up": <><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /></>,
+  "volume-off": <><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><line x1="23" y1="9" x2="17" y2="15" /><line x1="17" y1="9" x2="23" y2="15" /></>
 };
 
 export function Icon({ name, size = 18, filled = false }: { name: IconName; size?: number; filled?: boolean }) {
