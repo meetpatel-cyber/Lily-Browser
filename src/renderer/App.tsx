@@ -7,6 +7,7 @@ import { Toolbar } from "./components/Toolbar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { FindInPage } from "./components/FindInPage";
 import { PermissionBanner } from "./components/PermissionBanner";
+import { TabSearch } from "./components/TabSearch";
 import { addressLabel, toNavigationUrl } from "./lib/navigation";
 
 const emptyState: BrowserState = { tabs: [], tabGroups: {}, activeTabId: "", bookmarks: [], history: [], downloads: [], preferences: { searchEngine: "duckduckgo", startupBehavior: "continue", downloadLocation: "", askWhereToSave: false, appearance: "system" }, permissions: {}, pendingPermissions: [], effectiveTheme: "light" };
@@ -16,6 +17,7 @@ export default function App() {
   const [address, setAddress] = useState("");
   const [librarySection, setLibrarySection] = useState<LibrarySection | null>(null);
   const [isSettingsVisible, setIsSettingsVisible] = useState(false);
+  const [isTabSearchVisible, setIsTabSearchVisible] = useState(false);
   const browserSurfaceRef = useRef<HTMLElement | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
   const findInputRef = useRef<HTMLInputElement | null>(null);
@@ -32,6 +34,9 @@ export default function App() {
   const isSettingsVisibleRef = useRef(isSettingsVisible);
   isSettingsVisibleRef.current = isSettingsVisible;
 
+  const isTabSearchVisibleRef = useRef(isTabSearchVisible);
+  isTabSearchVisibleRef.current = isTabSearchVisible;
+
   useEffect(() => {
     let live = true;
     void window.lilyBrowser.getState().then((state) => {
@@ -40,8 +45,11 @@ export default function App() {
     const removeStateListener = window.lilyBrowser.onStateChanged(setBrowserState);
     const removeCommandListener = window.lilyBrowser.onCommand((command) => {
       if (command === "focus-address") {
+        if (isTabSearchVisibleRef.current) setIsTabSearchVisible(false);
         addressInputRef.current?.focus();
         addressInputRef.current?.select();
+      } else if (command === "tab-search") {
+        setIsTabSearchVisible(true);
       } else if (command === "find") {
         const active = activeTabRef.current;
         if (active && !active.isNewTab && !librarySectionRef.current) {
@@ -61,7 +69,9 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => () => window.lilyBrowser.setLibraryVisible(false), []);
+  useEffect(() => {
+    window.lilyBrowser.setLibraryVisible(!!librarySection || isSettingsVisible || isTabSearchVisible);
+  }, [librarySection, isSettingsVisible, isTabSearchVisible]);
 
   useEffect(() => {
     setAddress(activeTab?.url ? addressLabel(activeTab.url) : "");
@@ -88,6 +98,7 @@ export default function App() {
   const closeLibrary = useCallback(() => {
     setLibrarySection(null);
     setIsSettingsVisible(false);
+    setIsTabSearchVisible(false);
     window.lilyBrowser.setLibraryVisible(false);
   }, []);
 
@@ -153,9 +164,14 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && (librarySectionRef.current || isSettingsVisibleRef.current)) {
-        event.preventDefault();
-        closeLibrary();
+      if (event.key === "Escape") {
+        if (isTabSearchVisibleRef.current) {
+          event.preventDefault();
+          setIsTabSearchVisible(false);
+        } else if (librarySectionRef.current || isSettingsVisibleRef.current) {
+          event.preventDefault();
+          closeLibrary();
+        }
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -244,6 +260,15 @@ export default function App() {
           onClose={closeLibrary}
         /> : activeTab?.isNewTab && <NewTabPage key={activeTab.id} onNavigate={submitAddress} />}
       </section>
+
+      {isTabSearchVisible && (
+        <TabSearch
+          tabs={browserState.tabs}
+          activeTabId={activeTab?.id}
+          onClose={() => setIsTabSearchVisible(false)}
+          onSelect={handleSelectTab}
+        />
+      )}
     </main>
   );
 }

@@ -861,6 +861,7 @@ function runBrowserCommand(command: BrowserCommand): void {
     case "home": if (active) openHome(active.state.id); break;
     case "focus-address": mainWindow?.webContents.send("browser:command", command); break;
     case "find": mainWindow?.webContents.send("browser:command", command); break;
+    case "tab-search": mainWindow?.webContents.send("browser:command", command); break;
     case "zoom-in":
     case "zoom-out":
     case "zoom-reset":
@@ -890,6 +891,7 @@ function commandFromInput(input: Electron.Input): BrowserCommand | undefined {
   if (commandModifier) {
     if (input.key === "Tab") return input.shift ? "previous-tab" : "next-tab";
     if (input.key.toLowerCase() === "t") return input.shift ? "reopen-tab" : "new-tab";
+    if (input.key.toLowerCase() === "a" && input.shift) return "tab-search";
     if (input.key.toLowerCase() === "w") return "close-tab";
     if (input.key.toLowerCase() === "l") return "focus-address";
     if (input.key.toLowerCase() === "f") return "find";
@@ -1122,7 +1124,10 @@ function buildApplicationMenu(): void {
       { type: "separator" },
       { label: "Home", accelerator: "Alt+Home", click: () => runBrowserCommand("home") }
     ] },
-    { label: "View", submenu: [{ label: "Focus Address Bar", accelerator: "CmdOrCtrl+L", click: () => runBrowserCommand("focus-address") }] }
+    { label: "View", submenu: [
+      { label: "Focus Address Bar", accelerator: "CmdOrCtrl+L", click: () => runBrowserCommand("focus-address") },
+      { label: "Search Tabs", accelerator: "CmdOrCtrl+Shift+A", click: () => runBrowserCommand("tab-search") }
+    ] }
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }

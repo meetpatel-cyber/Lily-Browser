@@ -1,0 +1,119 @@
+.tab-search-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  z-index: 10000;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 80px;
+}
+
+.tab-search-modal {
+  width: 500px;
+  max-width: 90vw;
+  background-color: var(--bg-base);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: 60vh;
+}
+
+.tab-search-input-wrapper {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--fg-secondary);
+}
+
+.tab-search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--fg-base);
+  font-size: 16px;
+  padding-left: 12px;
+  outline: none;
+}
+
+.tab-search-results {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-search-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--fg-secondary);
+  font-size: 14px;
+}
+
+.tab-search-result {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  color: var(--fg-base);
+  cursor: pointer;
+  text-align: left;
+}
+
+.tab-search-result.selected {
+  background-color: var(--bg-hover);
+}
+
+.tab-search-result:hover {
+  background-color: var(--bg-hover);
+}
+
+.tab-search-result.active {
+  border-left: 3px solid var(--accent-color);
+  padding-left: 13px;
+}
+
+.tab-search-result-favicon {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.tab-search-result-favicon img, .tab-search-result-favicon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.tab-search-result-details {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+}
+
+.tab-search-result-title {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+
+.tab-search-result-url {
+  font-size: 11px;
+  color: var(--fg-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

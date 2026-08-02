@@ -12,7 +12,7 @@ interface TabStripProps {
   tabGroups?: Record<string, import("../../shared/browser").TabGroup>;
 }
 
-function TabFavicon({ favicon, isNewTab }: { favicon?: string; isNewTab: boolean }) {
+export function TabFavicon({ favicon, isNewTab }: { favicon?: string; isNewTab: boolean }) {
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
