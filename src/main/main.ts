@@ -1072,6 +1072,16 @@ function removeDownload(downloadId: string): void {
   publishState();
 }
 
+function clearCompletedDownloads(): void {
+  const initialLength = downloads.length;
+  downloads = downloads.filter((d) => d.status !== "completed");
+  
+  if (downloads.length !== initialLength) {
+    dataStore.saveDownloads(downloads);
+    publishState();
+  }
+}
+
 function updateDownloadError(download: StoredDownload, message: string): void {
   download.error = message;
   dataStore.saveDownloads(downloads);
@@ -1439,6 +1449,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle("browser:resume-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) resumeDownload(downloadId); });
   ipcMain.handle("browser:cancel-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) cancelDownload(downloadId); });
   ipcMain.handle("browser:remove-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) removeDownload(downloadId); });
+  ipcMain.handle("browser:clear-completed-downloads", () => clearCompletedDownloads());
   ipcMain.handle("browser:choose-download-location", async () => {
     if (!mainWindow) return undefined;
     const result = await dialog.showOpenDialog(mainWindow, {

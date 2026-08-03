@@ -22,6 +22,7 @@ interface LibraryPanelProps {
   onResumeDownload: (downloadId: string) => void;
   onCancelDownload: (downloadId: string) => void;
   onRemoveDownload: (downloadId: string) => void;
+  onClearCompletedDownloads: () => void;
 }
 
 function formatBytes(bytes: number): string {
@@ -374,7 +375,9 @@ function DownloadList({ downloads, onOpenDownload, onRevealDownload, onPauseDown
   );
 }
 
-export function LibraryPanel({ section, bookmarks, history, downloads, onSectionChange, onClose, onOpenUrl, onRemoveBookmark, onUpdateBookmark, onRemoveHistory, onClearHistory, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload, onRemoveDownload }: LibraryPanelProps) {
+export function LibraryPanel({ section, bookmarks, history, downloads, onSectionChange, onClose, onOpenUrl, onRemoveBookmark, onUpdateBookmark, onRemoveHistory, onClearHistory, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload, onRemoveDownload, onClearCompletedDownloads }: LibraryPanelProps) {
+  const hasCompletedDownloads = downloads.some(d => d.status === "completed");
+
   return (
     <section className="library-panel" aria-label="Library">
       <div className="library-panel__header">
@@ -388,6 +391,7 @@ export function LibraryPanel({ section, bookmarks, history, downloads, onSection
         <div className="library-panel__section-heading">
           <h3>{section === "bookmarks" ? "Bookmarks" : section === "history" ? "History" : "Downloads"}</h3>
           {section === "history" && history.length > 0 && <button className="library-clear" type="button" onClick={onClearHistory}>Clear history</button>}
+          {section === "downloads" && hasCompletedDownloads && <button className="library-clear" type="button" onClick={onClearCompletedDownloads}>Clear completed</button>}
         </div>
         {section === "bookmarks" && <BookmarkList bookmarks={bookmarks} onOpenUrl={onOpenUrl} onRemoveBookmark={onRemoveBookmark} onUpdateBookmark={onUpdateBookmark} />}
         {section === "history" && <HistoryList history={history} onOpenUrl={onOpenUrl} onRemoveHistory={onRemoveHistory} />}
