@@ -1082,6 +1082,14 @@ function clearCompletedDownloads(): void {
   }
 }
 
+function retryDownload(downloadId: string): void {
+  const download = downloads.find((d) => d.id === downloadId);
+  if (!download || download.status !== "failed" || !download.url) return;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.downloadURL(download.url);
+  }
+}
+
 function updateDownloadError(download: StoredDownload, message: string): void {
   download.error = message;
   dataStore.saveDownloads(downloads);
@@ -1449,6 +1457,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle("browser:resume-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) resumeDownload(downloadId); });
   ipcMain.handle("browser:cancel-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) cancelDownload(downloadId); });
   ipcMain.handle("browser:remove-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) removeDownload(downloadId); });
+  ipcMain.handle("browser:retry-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) retryDownload(downloadId); });
   ipcMain.handle("browser:clear-completed-downloads", () => clearCompletedDownloads());
   ipcMain.handle("browser:choose-download-location", async () => {
     if (!mainWindow) return undefined;

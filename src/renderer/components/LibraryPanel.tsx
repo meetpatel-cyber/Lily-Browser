@@ -22,6 +22,7 @@ interface LibraryPanelProps {
   onResumeDownload: (downloadId: string) => void;
   onCancelDownload: (downloadId: string) => void;
   onRemoveDownload: (downloadId: string) => void;
+  onRetryDownload: (downloadId: string) => void;
   onClearCompletedDownloads: () => void;
 }
 
@@ -254,7 +255,7 @@ function downloadStatus(download: DownloadRecord): string {
   return parts.join(" · ");
 }
 
-function DownloadList({ downloads, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload, onRemoveDownload }: Pick<LibraryPanelProps, "downloads" | "onOpenDownload" | "onRevealDownload" | "onPauseDownload" | "onResumeDownload" | "onCancelDownload" | "onRemoveDownload">) {
+function DownloadList({ downloads, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload, onRemoveDownload, onRetryDownload }: Pick<LibraryPanelProps, "downloads" | "onOpenDownload" | "onRevealDownload" | "onPauseDownload" | "onResumeDownload" | "onCancelDownload" | "onRemoveDownload" | "onRetryDownload">) {
   const [searchQuery, setSearchQuery] = React.useState("");
 
   if (downloads.length === 0) return <EmptyState>Downloads started from websites will appear here.</EmptyState>;
@@ -354,6 +355,11 @@ function DownloadList({ downloads, onOpenDownload, onRevealDownload, onPauseDown
                       </span>
                     )}
                     {download.status !== "in-progress" && <span className="download-actions">
+                      {download.status === "failed" && (
+                        <button className="library-entry__action" type="button" title="Retry download" aria-label={`Retry ${download.filename}`} onClick={() => onRetryDownload(download.id)}>
+                          <Icon name="reload" size={15} />
+                        </button>
+                      )}
                       {download.status === "completed" && (
                         <>
                           <button className="library-entry__action" type="button" title="Open downloaded file" aria-label={`Open ${download.filename}`} onClick={() => onOpenDownload(download.id)}><Icon name="open" size={16} /></button>
@@ -375,7 +381,7 @@ function DownloadList({ downloads, onOpenDownload, onRevealDownload, onPauseDown
   );
 }
 
-export function LibraryPanel({ section, bookmarks, history, downloads, onSectionChange, onClose, onOpenUrl, onRemoveBookmark, onUpdateBookmark, onRemoveHistory, onClearHistory, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload, onRemoveDownload, onClearCompletedDownloads }: LibraryPanelProps) {
+export function LibraryPanel({ section, bookmarks, history, downloads, onSectionChange, onClose, onOpenUrl, onRemoveBookmark, onUpdateBookmark, onRemoveHistory, onClearHistory, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload, onRemoveDownload, onRetryDownload, onClearCompletedDownloads }: LibraryPanelProps) {
   const hasCompletedDownloads = downloads.some(d => d.status === "completed");
 
   return (
@@ -395,7 +401,7 @@ export function LibraryPanel({ section, bookmarks, history, downloads, onSection
         </div>
         {section === "bookmarks" && <BookmarkList bookmarks={bookmarks} onOpenUrl={onOpenUrl} onRemoveBookmark={onRemoveBookmark} onUpdateBookmark={onUpdateBookmark} />}
         {section === "history" && <HistoryList history={history} onOpenUrl={onOpenUrl} onRemoveHistory={onRemoveHistory} />}
-        {section === "downloads" && <DownloadList downloads={downloads} onOpenDownload={onOpenDownload} onRevealDownload={onRevealDownload} onPauseDownload={onPauseDownload} onResumeDownload={onResumeDownload} onCancelDownload={onCancelDownload} onRemoveDownload={onRemoveDownload} />}
+        {section === "downloads" && <DownloadList downloads={downloads} onOpenDownload={onOpenDownload} onRevealDownload={onRevealDownload} onPauseDownload={onPauseDownload} onResumeDownload={onResumeDownload} onCancelDownload={onCancelDownload} onRemoveDownload={onRemoveDownload} onRetryDownload={onRetryDownload} />}
       </div>
     </section>
   );
