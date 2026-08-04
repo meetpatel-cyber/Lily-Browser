@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions, nativeTheme, session, shell, WebContentsView } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions, nativeTheme, session, shell, WebContentsView, Notification } from "electron";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -1001,6 +1001,9 @@ function registerDownloadHandler(): void {
         download.status = "completed";
         download.savePath = item.getSavePath();
         download.error = undefined;
+        if (Notification.isSupported()) {
+          new Notification({ title: "Download Complete", body: download.filename }).show();
+        }
       } else if (state === "cancelled") {
         if (!item.getSavePath()) {
           const idx = downloads.findIndex(d => d.id === downloadId);
@@ -1012,6 +1015,9 @@ function registerDownloadHandler(): void {
       } else {
         download.status = "failed";
         download.error = item.getLastModifiedTime() ? "Download failed before completion." : "Download failed.";
+        if (Notification.isSupported()) {
+          new Notification({ title: "Download Failed", body: download.filename }).show();
+        }
       }
       dataStore.saveDownloads(downloads);
       publishState();
