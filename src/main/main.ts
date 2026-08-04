@@ -956,6 +956,7 @@ function registerDownloadHandler(): void {
     });
 
     downloads.unshift(download);
+    dataStore.saveDownloads(downloads);
     publishState();
 
     item.on("updated", (_updateEvent, state) => {
@@ -1663,6 +1664,22 @@ function setupPermissions(): void {
 app.whenReady().then(() => {
   dataStore = new BrowserDataStore(app.getPath("userData"));
   downloads = dataStore.getDownloads();
+  
+  let downloadsModified = false;
+  for (const d of downloads) {
+    if (d.status === "in-progress") {
+      d.status = "failed";
+      d.error = "Download was interrupted by application shutdown.";
+      d.isPaused = false;
+      d.canResume = false;
+      d.speed = undefined;
+      downloadsModified = true;
+    }
+  }
+  if (downloadsModified) {
+    dataStore.saveDownloads(downloads);
+  }
+
   updateDownloadConfig();
   
   nativeTheme.on("updated", () => {

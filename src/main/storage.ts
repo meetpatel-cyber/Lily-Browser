@@ -112,7 +112,7 @@ function sanitizeDownloads(value: unknown): StoredDownload[] {
   return value.reduce<StoredDownload[]>((downloads, item) => {
     if (!isObject(item) || !isHttpUrl(item.url)) return downloads;
     const status = readStatus(item.status);
-    if (!status || status === "in-progress") return downloads;
+    if (!status) return downloads;
     downloads.push({
       id: readText(item.id, randomUUID(), 128),
       filename: readText(item.filename, "download", 512),
@@ -346,7 +346,6 @@ export class BrowserDataStore {
 
   saveDownloads(downloads: StoredDownload[]): void {
     this.data.downloads = downloads
-      .filter((download) => download.status !== "in-progress")
       .slice(0, MAX_DOWNLOADS)
       .map((download) => ({ ...download }));
     this.persist();
