@@ -64,6 +64,7 @@ export interface BrowserState {
   tabGroups: Record<string, TabGroup>;
   activeTabId: string;
   bookmarks: Bookmark[];
+  bookmarkFolders: BookmarkFolder[];
   history: HistoryEntry[];
   downloads: DownloadRecord[];
   preferences: BrowserPreferences;
@@ -96,11 +97,18 @@ export interface PendingPermission {
   category: PermissionCategory;
 }
 
+export interface BookmarkFolder {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
 export interface Bookmark {
   id: string;
   title: string;
   url: string;
   createdAt: number;
+  folderId?: string;
 }
 
 export interface HistoryEntry {

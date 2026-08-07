@@ -1,5 +1,5 @@
 import * as React from "react";
-import type { Bookmark, DownloadRecord, HistoryEntry } from "../../shared/browser";
+import type { Bookmark, BookmarkFolder, DownloadRecord, HistoryEntry } from "../../shared/browser";
 import { Icon } from "./Icon";
 
 export type LibrarySection = "bookmarks" | "history" | "downloads";
@@ -7,13 +7,17 @@ export type LibrarySection = "bookmarks" | "history" | "downloads";
 interface LibraryPanelProps {
   section: LibrarySection;
   bookmarks: Bookmark[];
+  bookmarkFolders: BookmarkFolder[];
   history: HistoryEntry[];
   downloads: DownloadRecord[];
   onSectionChange: (section: LibrarySection) => void;
   onClose: () => void;
   onOpenUrl: (url: string) => void;
   onRemoveBookmark: (bookmarkId: string) => void;
-  onUpdateBookmark: (bookmarkId: string, url: string, title: string) => void;
+  onUpdateBookmark: (bookmarkId: string, url: string, title: string, folderId?: string) => void;
+  onCreateBookmarkFolder: (name: string) => void;
+  onRenameBookmarkFolder: (folderId: string, name: string) => void;
+  onDeleteBookmarkFolder: (folderId: string) => void;
   onRemoveHistory: (historyId: string) => void;
   onClearHistory: () => void;
   onOpenDownload: (downloadId: string) => void;
@@ -42,34 +46,63 @@ function EmptyState({ children }: { children: React.ReactNode }) {
   return <p className="library-empty">{children}</p>;
 }
 
-function BookmarkList({ bookmarks, onOpenUrl, onRemoveBookmark, onUpdateBookmark }: Pick<LibraryPanelProps, "bookmarks" | "onOpenUrl" | "onRemoveBookmark" | "onUpdateBookmark">) {
+function BookmarkList({ bookmarks, bookmarkFolders, onOpenUrl, onRemoveBookmark, onUpdateBookmark, onCreateBookmarkFolder, onRenameBookmarkFolder, onDeleteBookmarkFolder }: Pick<LibraryPanelProps, "bookmarks" | "bookmarkFolders" | "onOpenUrl" | "onRemoveBookmark" | "onUpdateBookmark" | "onCreateBookmarkFolder" | "onRenameBookmarkFolder" | "onDeleteBookmarkFolder">) {
   const [searchQuery, setSearchQuery] = React.useState("");
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editTitle, setEditTitle] = React.useState("");
   const [editUrl, setEditUrl] = React.useState("");
+  const [editFolderId, setEditFolderId] = React.useState<string | undefined>(undefined);
+  
+  const [expandedFolders, setExpandedFolders] = React.useState<Set<string>>(new Set());
+  const [isCreatingFolder, setIsCreatingFolder] = React.useState(false);
+  const [newFolderName, setNewFolderName] = React.useState("");
+  
+  const [renamingFolderId, setRenamingFolderId] = React.useState<string | null>(null);
+  const [renameFolderName, setRenameFolderName] = React.useState("");
 
-  if (bookmarks.length === 0) return <EmptyState>Pages you save will appear here.</EmptyState>;
+  if (bookmarks.length === 0 && bookmarkFolders.length === 0 && !isCreatingFolder) return <EmptyState>Pages you save will appear here.</EmptyState>;
 
   const query = searchQuery.trim().toLowerCase();
-  const filteredBookmarks = query
-    ? bookmarks.filter(
-        (b) =>
-          b.title.toLowerCase().includes(query) ||
-          b.url.toLowerCase().includes(query)
-      )
+  const isSearching = query.length > 0;
+  
+  const filteredBookmarks = isSearching
+    ? bookmarks.filter((b) => b.title.toLowerCase().includes(query) || b.url.toLowerCase().includes(query))
     : bookmarks;
 
   const handleEditClick = (bookmark: Bookmark) => {
     setEditingId(bookmark.id);
     setEditTitle(bookmark.title);
     setEditUrl(bookmark.url);
+    setEditFolderId(bookmark.folderId);
   };
 
   const handleSave = () => {
     if (editingId && editUrl.trim() !== "") {
-      onUpdateBookmark(editingId, editUrl.trim(), editTitle.trim() || editUrl.trim());
+      onUpdateBookmark(editingId, editUrl.trim(), editTitle.trim() || editUrl.trim(), editFolderId);
       setEditingId(null);
     }
+  };
+
+  const toggleFolder = (folderId: string) => {
+    const next = new Set(expandedFolders);
+    if (next.has(folderId)) next.delete(folderId);
+    else next.add(folderId);
+    setExpandedFolders(next);
+  };
+
+  const handleCreateFolder = () => {
+    if (newFolderName.trim() !== "") {
+      onCreateBookmarkFolder(newFolderName.trim());
+    }
+    setIsCreatingFolder(false);
+    setNewFolderName("");
+  };
+
+  const handleRenameFolder = () => {
+    if (renamingFolderId && renameFolderName.trim() !== "") {
+      onRenameBookmarkFolder(renamingFolderId, renameFolderName.trim());
+    }
+    setRenamingFolderId(null);
   };
 
   return (
@@ -90,19 +123,42 @@ function BookmarkList({ bookmarks, onOpenUrl, onRemoveBookmark, onUpdateBookmark
         )}
       </div>
 
-      {filteredBookmarks.length === 0 ? (
+      {!isSearching && (
+        <div style={{ padding: "0 16px 8px" }}>
+          {!isCreatingFolder ? (
+            <button type="button" onClick={() => setIsCreatingFolder(true)} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: "12px", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px", padding: 0 }}>
+              <Icon name="plus" size={14} /> New Folder
+            </button>
+          ) : (
+            <div style={{ display: "flex", gap: "6px" }}>
+              <input type="text" className="history-search__input" style={{ flex: 1, margin: 0, height: "24px" }} placeholder="Folder name" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} autoFocus onKeyDown={(e) => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') setIsCreatingFolder(false); }} />
+              <button type="button" onClick={handleCreateFolder} style={{ padding: "4px 8px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: "4px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>Create</button>
+              <button type="button" onClick={() => setIsCreatingFolder(false)} style={{ padding: "4px 8px", background: "var(--bg-active)", color: "inherit", border: "none", borderRadius: "4px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>Cancel</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isSearching && filteredBookmarks.length === 0 ? (
         <EmptyState>No bookmarks found.</EmptyState>
       ) : (
         <div className="library-list">
-          {filteredBookmarks.map((bookmark) => (
+          {/* Render search results as flat list */}
+          {isSearching && filteredBookmarks.map((bookmark) => (
             <div className="library-entry" key={bookmark.id}>
               {editingId === bookmark.id ? (
                 <div className="bookmark-edit-form" style={{ display: "flex", flexDirection: "column", flex: 1, gap: "6px", minWidth: 0, padding: "4px 0" }}>
                   <input type="text" className="history-search__input" style={{ height: "26px", padding: "0 8px", marginBottom: 0 }} value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="Name" />
                   <input type="text" className="history-search__input" style={{ height: "26px", padding: "0 8px", marginBottom: 0, color: "#888b92" }} value={editUrl} onChange={(e) => setEditUrl(e.target.value)} placeholder="URL" />
+                  {bookmarkFolders.length > 0 && (
+                    <select className="history-search__input" style={{ height: "26px", padding: "0 4px", marginBottom: 0 }} value={editFolderId || ""} onChange={(e) => setEditFolderId(e.target.value || undefined)}>
+                      <option value="">Root</option>
+                      {bookmarkFolders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                    </select>
+                  )}
                   <div style={{ display: "flex", gap: "6px", marginTop: "2px" }}>
-                    <button type="button" onClick={handleSave} style={{ padding: "4px 10px", borderRadius: "6px", background: "#6669df", color: "#fff", border: "0", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>Save</button>
-                    <button type="button" onClick={() => setEditingId(null)} style={{ padding: "4px 10px", borderRadius: "6px", background: "#e5e5e8", color: "#34353a", border: "0", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>Cancel</button>
+                    <button type="button" onClick={handleSave} style={{ padding: "4px 10px", borderRadius: "6px", background: "var(--accent)", color: "#fff", border: "0", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>Save</button>
+                    <button type="button" onClick={() => setEditingId(null)} style={{ padding: "4px 10px", borderRadius: "6px", background: "var(--bg-active)", color: "inherit", border: "0", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>Cancel</button>
                   </div>
                 </div>
               ) : (
@@ -111,12 +167,112 @@ function BookmarkList({ bookmarks, onOpenUrl, onRemoveBookmark, onUpdateBookmark
                     <Icon name="star" size={16} filled />
                     <span><strong>{bookmark.title}</strong><small>{bookmark.url}</small></span>
                   </button>
-                  <button className="library-entry__action" type="button" title="Edit bookmark" aria-label={`Edit ${bookmark.title}`} onClick={() => handleEditClick(bookmark)}><Icon name="edit" size={15} /></button>
-                  <button className="library-entry__action" type="button" title="Delete bookmark" aria-label={`Delete ${bookmark.title}`} onClick={() => onRemoveBookmark(bookmark.id)}><Icon name="trash" size={16} /></button>
+                  <button className="library-entry__action" type="button" title="Edit bookmark" onClick={() => handleEditClick(bookmark)}><Icon name="edit" size={15} /></button>
+                  <button className="library-entry__action" type="button" title="Delete bookmark" onClick={() => onRemoveBookmark(bookmark.id)}><Icon name="trash" size={16} /></button>
                 </>
               )}
             </div>
           ))}
+
+          {/* Render hierarchical view when not searching */}
+          {!isSearching && (
+            <>
+              {/* Folders first */}
+              {bookmarkFolders.map(folder => {
+                const isExpanded = expandedFolders.has(folder.id);
+                const folderBookmarks = bookmarks.filter(b => b.folderId === folder.id);
+                const isRenaming = renamingFolderId === folder.id;
+
+                return (
+                  <div key={folder.id} style={{ display: "flex", flexDirection: "column" }}>
+                    <div className="library-entry" style={{ background: isExpanded ? "var(--bg-active)" : "transparent" }}>
+                      {isRenaming ? (
+                        <div style={{ display: "flex", gap: "6px", flex: 1, padding: "4px 0" }}>
+                          <input type="text" className="history-search__input" style={{ flex: 1, margin: 0, height: "24px" }} value={renameFolderName} onChange={(e) => setRenameFolderName(e.target.value)} autoFocus onKeyDown={(e) => { if (e.key === 'Enter') handleRenameFolder(); if (e.key === 'Escape') setRenamingFolderId(null); }} />
+                          <button type="button" onClick={handleRenameFolder} style={{ padding: "4px 8px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: "4px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>Save</button>
+                          <button type="button" onClick={() => setRenamingFolderId(null)} style={{ padding: "4px 8px", background: "var(--bg-active)", color: "inherit", border: "none", borderRadius: "4px", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>Cancel</button>
+                        </div>
+                      ) : (
+                        <>
+                          <button className="library-entry__open" type="button" onClick={() => toggleFolder(folder.id)}>
+                            <Icon name={isExpanded ? "chevron-down" : "chevron-right"} size={14} />
+                            <Icon name="folder" size={16} />
+                            <span><strong>{folder.name}</strong><small>{folderBookmarks.length} item{folderBookmarks.length !== 1 ? 's' : ''}</small></span>
+                          </button>
+                          <button className="library-entry__action" type="button" title="Rename folder" onClick={() => { setRenamingFolderId(folder.id); setRenameFolderName(folder.name); }}><Icon name="edit" size={15} /></button>
+                          <button className="library-entry__action" type="button" title="Delete folder" disabled={folderBookmarks.length > 0} style={{ opacity: folderBookmarks.length > 0 ? 0.3 : 1, cursor: folderBookmarks.length > 0 ? "not-allowed" : "pointer" }} onClick={() => onDeleteBookmarkFolder(folder.id)}><Icon name="trash" size={16} /></button>
+                        </>
+                      )}
+                    </div>
+                    {isExpanded && folderBookmarks.length > 0 && (
+                      <div style={{ paddingLeft: "24px" }}>
+                        {folderBookmarks.map(bookmark => (
+                          <div className="library-entry" key={bookmark.id}>
+                            {editingId === bookmark.id ? (
+                              <div className="bookmark-edit-form" style={{ display: "flex", flexDirection: "column", flex: 1, gap: "6px", minWidth: 0, padding: "4px 0" }}>
+                                <input type="text" className="history-search__input" style={{ height: "26px", padding: "0 8px", marginBottom: 0 }} value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="Name" />
+                                <input type="text" className="history-search__input" style={{ height: "26px", padding: "0 8px", marginBottom: 0, color: "#888b92" }} value={editUrl} onChange={(e) => setEditUrl(e.target.value)} placeholder="URL" />
+                                {bookmarkFolders.length > 0 && (
+                                  <select className="history-search__input" style={{ height: "26px", padding: "0 4px", marginBottom: 0 }} value={editFolderId || ""} onChange={(e) => setEditFolderId(e.target.value || undefined)}>
+                                    <option value="">Root</option>
+                                    {bookmarkFolders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                  </select>
+                                )}
+                                <div style={{ display: "flex", gap: "6px", marginTop: "2px" }}>
+                                  <button type="button" onClick={handleSave} style={{ padding: "4px 10px", borderRadius: "6px", background: "var(--accent)", color: "#fff", border: "0", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>Save</button>
+                                  <button type="button" onClick={() => setEditingId(null)} style={{ padding: "4px 10px", borderRadius: "6px", background: "var(--bg-active)", color: "inherit", border: "0", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>Cancel</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <button className="library-entry__open" type="button" onClick={() => onOpenUrl(bookmark.url)} title={bookmark.url}>
+                                  <Icon name="star" size={16} filled />
+                                  <span><strong>{bookmark.title}</strong><small>{bookmark.url}</small></span>
+                                </button>
+                                <button className="library-entry__action" type="button" title="Edit bookmark" onClick={() => handleEditClick(bookmark)}><Icon name="edit" size={15} /></button>
+                                <button className="library-entry__action" type="button" title="Delete bookmark" onClick={() => onRemoveBookmark(bookmark.id)}><Icon name="trash" size={16} /></button>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Root bookmarks */}
+              {bookmarks.filter(b => !b.folderId).map((bookmark) => (
+                <div className="library-entry" key={bookmark.id}>
+                  {editingId === bookmark.id ? (
+                    <div className="bookmark-edit-form" style={{ display: "flex", flexDirection: "column", flex: 1, gap: "6px", minWidth: 0, padding: "4px 0" }}>
+                      <input type="text" className="history-search__input" style={{ height: "26px", padding: "0 8px", marginBottom: 0 }} value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="Name" />
+                      <input type="text" className="history-search__input" style={{ height: "26px", padding: "0 8px", marginBottom: 0, color: "#888b92" }} value={editUrl} onChange={(e) => setEditUrl(e.target.value)} placeholder="URL" />
+                      {bookmarkFolders.length > 0 && (
+                        <select className="history-search__input" style={{ height: "26px", padding: "0 4px", marginBottom: 0 }} value={editFolderId || ""} onChange={(e) => setEditFolderId(e.target.value || undefined)}>
+                          <option value="">Root</option>
+                          {bookmarkFolders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                        </select>
+                      )}
+                      <div style={{ display: "flex", gap: "6px", marginTop: "2px" }}>
+                        <button type="button" onClick={handleSave} style={{ padding: "4px 10px", borderRadius: "6px", background: "var(--accent)", color: "#fff", border: "0", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>Save</button>
+                        <button type="button" onClick={() => setEditingId(null)} style={{ padding: "4px 10px", borderRadius: "6px", background: "var(--bg-active)", color: "inherit", border: "0", fontSize: "11px", cursor: "pointer", fontWeight: 600 }}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <button className="library-entry__open" type="button" onClick={() => onOpenUrl(bookmark.url)} title={bookmark.url}>
+                        <Icon name="star" size={16} filled />
+                        <span><strong>{bookmark.title}</strong><small>{bookmark.url}</small></span>
+                      </button>
+                      <button className="library-entry__action" type="button" title="Edit bookmark" onClick={() => handleEditClick(bookmark)}><Icon name="edit" size={15} /></button>
+                      <button className="library-entry__action" type="button" title="Delete bookmark" onClick={() => onRemoveBookmark(bookmark.id)}><Icon name="trash" size={16} /></button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>
@@ -381,7 +537,7 @@ function DownloadList({ downloads, onOpenDownload, onRevealDownload, onPauseDown
   );
 }
 
-export function LibraryPanel({ section, bookmarks, history, downloads, onSectionChange, onClose, onOpenUrl, onRemoveBookmark, onUpdateBookmark, onRemoveHistory, onClearHistory, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload, onRemoveDownload, onRetryDownload, onClearCompletedDownloads }: LibraryPanelProps) {
+export function LibraryPanel({ section, bookmarks, bookmarkFolders, history, downloads, onSectionChange, onClose, onOpenUrl, onRemoveBookmark, onUpdateBookmark, onCreateBookmarkFolder, onRenameBookmarkFolder, onDeleteBookmarkFolder, onRemoveHistory, onClearHistory, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload, onRemoveDownload, onRetryDownload, onClearCompletedDownloads }: LibraryPanelProps) {
   const hasCompletedDownloads = downloads.some(d => d.status === "completed");
 
   return (
@@ -399,7 +555,7 @@ export function LibraryPanel({ section, bookmarks, history, downloads, onSection
           {section === "history" && history.length > 0 && <button className="library-clear" type="button" onClick={onClearHistory}>Clear history</button>}
           {section === "downloads" && hasCompletedDownloads && <button className="library-clear" type="button" onClick={onClearCompletedDownloads}>Clear completed</button>}
         </div>
-        {section === "bookmarks" && <BookmarkList bookmarks={bookmarks} onOpenUrl={onOpenUrl} onRemoveBookmark={onRemoveBookmark} onUpdateBookmark={onUpdateBookmark} />}
+        {section === "bookmarks" && <BookmarkList bookmarks={bookmarks} bookmarkFolders={bookmarkFolders} onOpenUrl={onOpenUrl} onRemoveBookmark={onRemoveBookmark} onUpdateBookmark={onUpdateBookmark} onCreateBookmarkFolder={onCreateBookmarkFolder} onRenameBookmarkFolder={onRenameBookmarkFolder} onDeleteBookmarkFolder={onDeleteBookmarkFolder} />}
         {section === "history" && <HistoryList history={history} onOpenUrl={onOpenUrl} onRemoveHistory={onRemoveHistory} />}
         {section === "downloads" && <DownloadList downloads={downloads} onOpenDownload={onOpenDownload} onRevealDownload={onRevealDownload} onPauseDownload={onPauseDownload} onResumeDownload={onResumeDownload} onCancelDownload={onCancelDownload} onRemoveDownload={onRemoveDownload} onRetryDownload={onRetryDownload} />}
       </div>

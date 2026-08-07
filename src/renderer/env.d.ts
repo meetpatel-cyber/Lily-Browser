@@ -16,7 +16,10 @@ declare global {
       runCommand: (command: BrowserCommand) => Promise<void>;
       toggleBookmark: (tabId: string) => Promise<void>;
       removeBookmark: (bookmarkId: string) => Promise<void>;
-      updateBookmark: (bookmarkId: string, url: string, title: string) => Promise<void>;
+      updateBookmark: (bookmarkId: string, url: string, title: string, folderId?: string) => Promise<void>;
+      createBookmarkFolder: (name: string) => Promise<string>;
+      renameBookmarkFolder: (folderId: string, name: string) => Promise<void>;
+      deleteBookmarkFolder: (folderId: string) => Promise<boolean>;
       clearHistory: () => Promise<void>;
       clearBrowsingData: (options: ClearBrowsingDataOptions) => Promise<void>;
       resolvePermission: (reqId: string, decision: "allow" | "block" | "dismiss") => Promise<void>;

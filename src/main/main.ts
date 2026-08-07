@@ -102,6 +102,7 @@ function getSnapshot(): BrowserState {
     tabGroups: Object.fromEntries(tabGroups.entries()),
     activeTabId,
     bookmarks: dataStore.getBookmarks(),
+    bookmarkFolders: dataStore.getBookmarkFolders(),
     history: dataStore.getHistory(),
     downloads: downloads.map(toPublicDownload),
     preferences: prefs,
@@ -1347,11 +1348,36 @@ function registerIpcHandlers(): void {
       publishState();
     }
   });
-  ipcMain.handle("browser:update-bookmark", (_event, bookmarkId: unknown, url: unknown, title: unknown) => {
-    if (isIdentifier(bookmarkId) && typeof url === "string" && typeof title === "string") {
-      dataStore.updateBookmark(bookmarkId, url, title);
+  ipcMain.handle("browser:update-bookmark", (_event, bookmarkId: unknown, url: unknown, title: unknown, folderId: unknown) => {
+    if (typeof bookmarkId === "string" && typeof url === "string" && typeof title === "string") {
+      dataStore.updateBookmark(bookmarkId, url, title, typeof folderId === "string" ? folderId : undefined);
       publishState();
     }
+  });
+  
+  ipcMain.handle("browser:create-bookmark-folder", (_event, name: unknown) => {
+    if (typeof name === "string") {
+      const id = dataStore.createBookmarkFolder(name);
+      publishState();
+      return id;
+    }
+    return "";
+  });
+
+  ipcMain.handle("browser:rename-bookmark-folder", (_event, folderId: unknown, name: unknown) => {
+    if (typeof folderId === "string" && typeof name === "string") {
+      dataStore.renameBookmarkFolder(folderId, name);
+      publishState();
+    }
+  });
+
+  ipcMain.handle("browser:delete-bookmark-folder", (_event, folderId: unknown) => {
+    if (typeof folderId === "string") {
+      const success = dataStore.deleteBookmarkFolder(folderId);
+      if (success) publishState();
+      return success;
+    }
+    return false;
   });
   ipcMain.handle("browser:update-preferences", (_event, updates: unknown) => {
     if (typeof updates === "object" && updates !== null) {

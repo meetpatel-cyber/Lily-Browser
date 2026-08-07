@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { app } from "electron";
-import type { Bookmark, BrowserPreferences, DownloadRecord, DownloadStatus, HistoryEntry, PermissionCategory, PermissionDecision, SitePermissions } from "../shared/browser";
+import type { Bookmark, BookmarkFolder, BrowserPreferences, DownloadRecord, DownloadStatus, HistoryEntry, PermissionCategory, PermissionDecision, SitePermissions } from "../shared/browser";
 
 const DATA_VERSION = 1;
 const MAX_BOOKMARKS = 500;
@@ -22,6 +22,7 @@ export interface StoredDownload extends DownloadRecord {
 interface StoredBrowserData {
   version: number;
   bookmarks: Bookmark[];
+  bookmarkFolders: BookmarkFolder[];
   history: HistoryEntry[];
   downloads: StoredDownload[];
   session: SessionSnapshot;
@@ -33,6 +34,7 @@ function emptyData(): StoredBrowserData {
   return {
     version: DATA_VERSION,
     bookmarks: [],
+    bookmarkFolders: [],
     history: [],
     downloads: [],
     session: { tabs: [], activeIndex: 0 },
@@ -87,10 +89,28 @@ function sanitizeBookmarks(value: unknown): Bookmark[] {
       id: readText(item.id, randomUUID(), 128),
       url: item.url,
       title: readText(item.title, item.url),
-      createdAt: readTimestamp(item.createdAt, Date.now())
+      createdAt: readTimestamp(item.createdAt, Date.now()),
+      folderId: typeof item.folderId === "string" ? item.folderId : undefined
     });
     return bookmarks;
   }, []).slice(0, MAX_BOOKMARKS);
+}
+
+function sanitizeBookmarkFolders(value: unknown): BookmarkFolder[] {
+  if (!Array.isArray(value)) return [];
+  const seenIds = new Set<string>();
+  return value.reduce<BookmarkFolder[]>((folders, item) => {
+    if (!isObject(item)) return folders;
+    const id = typeof item.id === "string" && item.id.trim() ? item.id.trim() : undefined;
+    if (!id || seenIds.has(id)) return folders;
+    seenIds.add(id);
+    folders.push({
+      id,
+      name: readText(item.name, "New Folder"),
+      createdAt: readTimestamp(item.createdAt, Date.now())
+    });
+    return folders;
+  }, []).slice(0, 50); // limit to 50 folders to be safe
 }
 
 function sanitizeHistory(value: unknown): HistoryEntry[] {
@@ -174,6 +194,7 @@ function sanitizeData(value: unknown): StoredBrowserData {
   return {
     version: DATA_VERSION,
     bookmarks: sanitizeBookmarks(value.bookmarks),
+    bookmarkFolders: sanitizeBookmarkFolders((value as Record<string, unknown>).bookmarkFolders),
     history: sanitizeHistory(value.history),
     downloads: sanitizeDownloads(value.downloads),
     session: sanitizeSession(value.session),
@@ -214,6 +235,10 @@ export class BrowserDataStore {
 
   getBookmarks(): Bookmark[] {
     return this.data.bookmarks.map((bookmark) => ({ ...bookmark }));
+  }
+
+  getBookmarkFolders(): BookmarkFolder[] {
+    return this.data.bookmarkFolders.map((folder) => ({ ...folder }));
   }
 
   getHistory(): HistoryEntry[] {
@@ -297,13 +322,41 @@ export class BrowserDataStore {
     return true;
   }
 
-  updateBookmark(bookmarkId: string, url: string, title: string): void {
+  updateBookmark(bookmarkId: string, url: string, title: string, folderId?: string): void {
     const bookmark = this.data.bookmarks.find((b) => b.id === bookmarkId);
     if (bookmark) {
       bookmark.url = url;
       bookmark.title = readText(title, url);
+      bookmark.folderId = folderId;
       this.persist();
     }
+  }
+
+  createBookmarkFolder(name: string): string {
+    const id = randomUUID();
+    this.data.bookmarkFolders.push({ id, name: readText(name, "New Folder"), createdAt: Date.now() });
+    this.persist();
+    return id;
+  }
+
+  renameBookmarkFolder(folderId: string, name: string): void {
+    const folder = this.data.bookmarkFolders.find((f) => f.id === folderId);
+    if (folder) {
+      folder.name = readText(name, "New Folder");
+      this.persist();
+    }
+  }
+
+  deleteBookmarkFolder(folderId: string): boolean {
+    const hasBookmarks = this.data.bookmarks.some((b) => b.folderId === folderId);
+    if (hasBookmarks) return false;
+    
+    const next = this.data.bookmarkFolders.filter((f) => f.id !== folderId);
+    if (next.length !== this.data.bookmarkFolders.length) {
+      this.data.bookmarkFolders = next;
+      this.persist();
+    }
+    return true;
   }
 
   removeBookmark(bookmarkId: string): void {

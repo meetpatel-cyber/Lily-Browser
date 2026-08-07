@@ -10,7 +10,7 @@ import { PermissionBanner } from "./components/PermissionBanner";
 import { TabSearch } from "./components/TabSearch";
 import { addressLabel, toNavigationUrl } from "./lib/navigation";
 
-const emptyState: BrowserState = { tabs: [], tabGroups: {}, activeTabId: "", bookmarks: [], history: [], downloads: [], preferences: { searchEngine: "duckduckgo", startupBehavior: "continue", downloadLocation: "", askWhereToSave: false, appearance: "system" }, permissions: {}, pendingPermissions: [], effectiveTheme: "light" };
+const emptyState: BrowserState = { tabs: [], tabGroups: {}, activeTabId: "", bookmarks: [], bookmarkFolders: [], history: [], downloads: [], preferences: { searchEngine: "duckduckgo", startupBehavior: "continue", downloadLocation: "", askWhereToSave: false, appearance: "system" }, permissions: {}, pendingPermissions: [], effectiveTheme: "light" };
 
 export default function App() {
   const [browserState, setBrowserState] = useState<BrowserState>(emptyState);
@@ -237,13 +237,17 @@ export default function App() {
         {librarySection ? <LibraryPanel
           section={librarySection}
           bookmarks={browserState.bookmarks}
+          bookmarkFolders={browserState.bookmarkFolders}
           history={browserState.history}
           downloads={browserState.downloads}
           onSectionChange={setLibrarySection}
           onClose={closeLibrary}
           onOpenUrl={openLibraryUrl}
           onRemoveBookmark={(bookmarkId) => void window.lilyBrowser.removeBookmark(bookmarkId)}
-          onUpdateBookmark={(bookmarkId, url, title) => void window.lilyBrowser.updateBookmark(bookmarkId, url, title)}
+          onUpdateBookmark={(bookmarkId, url, title, folderId) => void window.lilyBrowser.updateBookmark(bookmarkId, url, title, folderId)}
+          onCreateBookmarkFolder={(name) => void window.lilyBrowser.createBookmarkFolder(name)}
+          onRenameBookmarkFolder={(folderId, name) => void window.lilyBrowser.renameBookmarkFolder(folderId, name)}
+          onDeleteBookmarkFolder={(folderId) => void window.lilyBrowser.deleteBookmarkFolder(folderId)}
           onClearHistory={() => {
             if (window.confirm("Clear all browsing history?")) void window.lilyBrowser.clearHistory();
           }}
