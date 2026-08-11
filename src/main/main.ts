@@ -1,10 +1,15 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions, nativeTheme, session, shell, WebContentsView, Notification } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions, nativeTheme, session, shell, WebContentsView, Notification, protocol } from "electron";
 import path from "node:path";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import type { BrowserBounds, BrowserCommand, BrowserState, BrowserTab, DownloadRecord, PendingPermission, PermissionCategory } from "../shared/browser";
+import type { BrowserBounds, BrowserCommand, BrowserState, BrowserTab, DownloadRecord, PendingPermission, PermissionCategory, Bookmark } from "../shared/browser";
 import { BrowserDataStore, type SessionSnapshot, type StoredDownload } from "./storage";
 import { parseBookmarkHtml, generateBookmarkHtml } from "./bookmarks-parser";
+import { initFaviconCache, fetchAndCacheFavicon } from "./favicon-cache";
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'lily-favicon', privileges: { standard: true, secure: true, supportFetchAPI: true, bypassCSP: true } }
+]);
 
 interface TabRecord {
   state: BrowserTab;
@@ -528,6 +533,15 @@ function attachBrowserEvents(record: TabRecord, view: WebContentsView): void {
     if (Array.isArray(favicons) && favicons.length > 0 && isAllowedFaviconUrl(favicons[0])) {
       record.state.favicon = favicons[0];
       publishState();
+      
+      const isBookmarked = dataStore.getBookmarks().some((b: Bookmark) => {
+        try { return new URL(b.url).hostname === new URL(record.state.url).hostname; }
+        catch { return false; }
+      });
+      if (isBookmarked) {
+        try { fetchAndCacheFavicon(new URL(record.state.url).hostname, favicons[0]); }
+        catch { /* ignore */ }
+      }
     }
   });
   const updateUrl = (_event: Electron.Event, url: string) => {
@@ -823,8 +837,12 @@ function openHome(tabId: string): void {
 function toggleBookmark(tabId: string): void {
   const record = tabs.get(tabId);
   if (!record || record.state.isNewTab || record.state.isLoading || record.state.error || !isAllowedNavigation(record.state.url)) return;
-  dataStore.toggleBookmark(record.state.url, record.state.title || fallbackTitle(record.state.url));
+  const added = dataStore.toggleBookmark(record.state.url, record.state.title || fallbackTitle(record.state.url));
   publishState();
+  if (added && record.state.favicon) {
+    try { fetchAndCacheFavicon(new URL(record.state.url).hostname, record.state.favicon); }
+    catch { /* ignore */ }
+  }
 }
 
 const ZOOM_FACTORS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0];
@@ -1741,6 +1759,7 @@ function setupPermissions(): void {
 }
 
 app.whenReady().then(() => {
+  initFaviconCache();
   dataStore = new BrowserDataStore(app.getPath("userData"));
   downloads = dataStore.getDownloads();
   
