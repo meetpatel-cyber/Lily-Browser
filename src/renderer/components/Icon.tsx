@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-type IconName = "back" | "forward" | "reload" | "home" | "plus" | "close" | "search" | "globe" | "star" | "library" | "history" | "download" | "trash" | "folder" | "open" | "pause" | "play" | "lock" | "lock-open" | "edit" | "settings" | "camera" | "microphone" | "bell" | "map-pin" | "volume-up" | "volume-off" | "chevron-down" | "chevron-right";
+export type IconName = "back" | "forward" | "reload" | "home" | "plus" | "close" | "search" | "globe" | "star" | "library" | "history" | "download" | "trash" | "folder" | "open" | "pause" | "play" | "lock" | "lock-open" | "edit" | "settings" | "camera" | "microphone" | "bell" | "map-pin" | "volume-up" | "volume-off" | "chevron-down" | "chevron-right";
 
 const paths: Record<IconName, ReactNode> = {
   back: <path d="m15 18-6-6 6-6" />,

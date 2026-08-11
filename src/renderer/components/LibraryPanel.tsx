@@ -1,16 +1,16 @@
 import * as React from "react";
 import type { Bookmark, BookmarkFolder, DownloadRecord, HistoryEntry } from "../../shared/browser";
-import { Icon } from "./Icon";
+import { Icon, type IconName } from "./Icon";
 import { useState } from "react";
 
-function BookmarkFavicon({ url }: { url: string }) {
+function FaviconIcon({ url, fallback, filled = false }: { url: string; fallback: IconName; filled?: boolean }) {
   const [error, setError] = useState(false);
-  if (error) return <Icon name="star" size={16} filled />;
+  if (error) return <Icon name={fallback} size={16} filled={filled} />;
   try {
     const hostname = new URL(url).hostname;
     return <img src={`lily-favicon://${hostname}`} width={16} height={16} onError={() => setError(true)} style={{ objectFit: 'contain' }} alt="" />;
   } catch {
-    return <Icon name="star" size={16} filled />;
+    return <Icon name={fallback} size={16} filled={filled} />;
   }
 }
 
@@ -176,7 +176,7 @@ function BookmarkList({ bookmarks, bookmarkFolders, onOpenUrl, onRemoveBookmark,
               ) : (
                 <>
                   <button className="library-entry__open" type="button" onClick={() => onOpenUrl(bookmark.url)} title={bookmark.url}>
-                    <BookmarkFavicon url={bookmark.url} />
+                    <FaviconIcon fallback="star" filled  url={bookmark.url} />
                     <span><strong>{bookmark.title}</strong><small>{bookmark.url}</small></span>
                   </button>
                   <button className="library-entry__action" type="button" title="Edit bookmark" onClick={() => handleEditClick(bookmark)}><Icon name="edit" size={15} /></button>
@@ -238,7 +238,7 @@ function BookmarkList({ bookmarks, bookmarkFolders, onOpenUrl, onRemoveBookmark,
                             ) : (
                               <>
                                 <button className="library-entry__open" type="button" onClick={() => onOpenUrl(bookmark.url)} title={bookmark.url}>
-                                  <BookmarkFavicon url={bookmark.url} />
+                                  <FaviconIcon url={bookmark.url} fallback="star" filled />
                                   <span><strong>{bookmark.title}</strong><small>{bookmark.url}</small></span>
                                 </button>
                                 <button className="library-entry__action" type="button" title="Edit bookmark" onClick={() => handleEditClick(bookmark)}><Icon name="edit" size={15} /></button>
@@ -274,7 +274,7 @@ function BookmarkList({ bookmarks, bookmarkFolders, onOpenUrl, onRemoveBookmark,
                   ) : (
                     <>
                       <button className="library-entry__open" type="button" onClick={() => onOpenUrl(bookmark.url)} title={bookmark.url}>
-                        <BookmarkFavicon url={bookmark.url} />
+                        <FaviconIcon fallback="star" filled  url={bookmark.url} />
                         <span><strong>{bookmark.title}</strong><small>{bookmark.url}</small></span>
                       </button>
                       <button className="library-entry__action" type="button" title="Edit bookmark" onClick={() => handleEditClick(bookmark)}><Icon name="edit" size={15} /></button>
@@ -312,28 +312,25 @@ function HistoryList({ history, onOpenUrl, onRemoveHistory }: Pick<LibraryPanelP
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).getTime();
 
-  const groups: { label: string; entries: HistoryEntry[]; showTime: boolean }[] = [];
+  const groups: { label: string; entries: HistoryEntry[] }[] = [];
 
   for (const entry of filteredHistory) {
     const d = new Date(entry.visitedAt);
     const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
     let label = "";
-    let showTime = false;
 
     if (dayStart === todayStart) {
       label = "Today";
-      showTime = true;
     } else if (dayStart === yesterdayStart) {
       label = "Yesterday";
-      showTime = true;
     } else {
       label = dateFormatter.format(d);
     }
 
     let group = groups[groups.length - 1];
     if (!group || group.label !== label) {
-      group = { label, entries: [], showTime };
+      group = { label, entries: [] };
       groups.push(group);
     }
 
@@ -375,14 +372,12 @@ function HistoryList({ history, onOpenUrl, onRemoveHistory }: Pick<LibraryPanelP
                 {group.entries.map((entry) => (
                   <div className="library-entry" key={entry.id}>
                     <button className="library-entry__open" type="button" onClick={() => onOpenUrl(entry.url)} title={entry.url}>
-                      <Icon name="history" size={16} />
+                      <FaviconIcon url={entry.url} fallback="history" />
                       <span><strong>{entry.title}</strong><small>{entry.url}</small></span>
                     </button>
-                    {group.showTime && (
-                      <time className="library-entry__time" dateTime={new Date(entry.visitedAt).toISOString()}>
-                        {timeFormatter.format(entry.visitedAt)}
-                      </time>
-                    )}
+                    <time className="library-entry__time" dateTime={new Date(entry.visitedAt).toISOString()}>
+                      {timeFormatter.format(entry.visitedAt)}
+                    </time>
                     <button className="library-entry__action" type="button" title="Remove from history" aria-label="Remove from history" onClick={() => onRemoveHistory(entry.id)}>
                       <Icon name="close" size={15} />
                     </button>
