@@ -1,9 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions, nativeTheme, session, shell, WebContentsView, Notification } from "electron";
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import type { BrowserBounds, BrowserCommand, BrowserState, BrowserTab, DownloadRecord, PendingPermission, PermissionCategory } from "../shared/browser";
 import { BrowserDataStore, type SessionSnapshot, type StoredDownload } from "./storage";
+import { parseBookmarkHtml, generateBookmarkHtml } from "./bookmarks-parser";
 
 interface TabRecord {
   state: BrowserTab;
@@ -1378,6 +1379,58 @@ function registerIpcHandlers(): void {
       return success;
     }
     return false;
+  });
+
+  ipcMain.handle("browser:import-bookmarks", async () => {
+    if (!mainWindow) return;
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      title: "Import Bookmarks",
+      properties: ["openFile"],
+      filters: [{ name: "HTML Files", extensions: ["html", "htm"] }],
+    });
+    
+    if (canceled || filePaths.length === 0) return;
+    
+    try {
+      const html = readFileSync(filePaths[0], "utf8");
+      const parsedBookmarks = parseBookmarkHtml(html);
+      
+      if (parsedBookmarks.length === 0) {
+        dialog.showMessageBox(mainWindow, {
+          type: "info",
+          title: "Invalid Bookmark File",
+          message: "No bookmarks found.",
+          detail: "The selected file does not contain a supported bookmark format or is empty.",
+          buttons: ["OK"]
+        });
+        return;
+      }
+      
+      const count = dataStore.addImportedBookmarks(parsedBookmarks);
+      if (count > 0) publishState();
+    } catch (e) {
+      console.error("Failed to import bookmarks:", e);
+    }
+  });
+
+  ipcMain.handle("browser:export-bookmarks", async () => {
+    if (!mainWindow) return;
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: "Export Bookmarks",
+      defaultPath: "bookmarks.html",
+      filters: [{ name: "HTML Files", extensions: ["html", "htm"] }],
+    });
+    
+    if (canceled || !filePath) return;
+    
+    try {
+      const bookmarks = dataStore.getBookmarks();
+      const folders = dataStore.getBookmarkFolders();
+      const html = generateBookmarkHtml(bookmarks, folders);
+      writeFileSync(filePath, html, "utf8");
+    } catch (e) {
+      console.error("Failed to export bookmarks:", e);
+    }
   });
   ipcMain.handle("browser:update-preferences", (_event, updates: unknown) => {
     if (typeof updates === "object" && updates !== null) {

@@ -5,7 +5,7 @@ import { app } from "electron";
 import type { Bookmark, BookmarkFolder, BrowserPreferences, DownloadRecord, DownloadStatus, HistoryEntry, PermissionCategory, PermissionDecision, SitePermissions } from "../shared/browser";
 
 const DATA_VERSION = 1;
-const MAX_BOOKMARKS = 500;
+const MAX_BOOKMARKS = 5000;
 const MAX_HISTORY_ENTRIES = 1_000;
 const MAX_DOWNLOADS = 100;
 const MAX_SESSION_TABS = 20;
@@ -307,6 +307,49 @@ export class BrowserDataStore {
       this.data.preferences.appearance = updates.appearance;
     }
     this.persist();
+  }
+
+  addImportedBookmarks(items: { url: string; title: string; createdAt?: number; folderName?: string }[]): number {
+    let importedCount = 0;
+    for (const item of items) {
+      if (this.data.bookmarks.some((b) => b.url === item.url && b.title === item.title)) {
+        continue;
+      }
+
+      let folderId: string | undefined;
+      if (item.folderName && item.folderName.trim() !== "") {
+        const folderName = item.folderName.trim();
+        let folder = this.data.bookmarkFolders.find((f) => f.name === folderName);
+        if (!folder) {
+          folder = { id: randomUUID(), name: folderName, createdAt: Date.now() };
+          this.data.bookmarkFolders.push(folder);
+        }
+        folderId = folder.id;
+      }
+
+      this.data.bookmarks.push({
+        id: randomUUID(),
+        url: item.url,
+        title: item.title,
+        createdAt: item.createdAt || Date.now(),
+        folderId
+      });
+      importedCount++;
+    }
+
+    if (importedCount > 0) {
+      // Netscape imports are usually appended to the end or beginning?
+      // Since we push, they'll appear at the bottom.
+      // But we should limit the array size if it explodes.
+      // Easiest is to keep the most recent ones if we slice, but let's just slice from the end to retain imported bookmarks.
+      // Wait, toggleBookmark unshifts (puts at top), so the latest bookmarks are at index 0. 
+      // If we pushed, the imported ones are at the end (oldest). That's fine.
+      if (this.data.bookmarks.length > MAX_BOOKMARKS) {
+        this.data.bookmarks = this.data.bookmarks.slice(0, MAX_BOOKMARKS);
+      }
+      this.persist();
+    }
+    return importedCount;
   }
 
   toggleBookmark(url: string, title: string): boolean {

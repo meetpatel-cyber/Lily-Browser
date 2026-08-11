@@ -20,6 +20,8 @@ declare global {
       createBookmarkFolder: (name: string) => Promise<string>;
       renameBookmarkFolder: (folderId: string, name: string) => Promise<void>;
       deleteBookmarkFolder: (folderId: string) => Promise<boolean>;
+      importBookmarks: () => Promise<void>;
+      exportBookmarks: () => Promise<void>;
       clearHistory: () => Promise<void>;
       clearBrowsingData: (options: ClearBrowsingDataOptions) => Promise<void>;
       resolvePermission: (reqId: string, decision: "allow" | "block" | "dismiss") => Promise<void>;

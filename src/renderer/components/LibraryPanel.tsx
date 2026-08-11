@@ -106,7 +106,7 @@ function BookmarkList({ bookmarks, bookmarkFolders, onOpenUrl, onRemoveBookmark,
   };
 
   return (
-    <div className="library-bookmarks-container" style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
+    <div className="library-bookmarks-container" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div className="history-search">
         <span className="history-search__icon"><Icon name="search" size={14} /></span>
         <input
@@ -329,7 +329,7 @@ function HistoryList({ history, onOpenUrl, onRemoveHistory }: Pick<LibraryPanelP
   }
 
   return (
-    <div className="library-history-container" style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
+    <div className="library-history-container" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div className="history-search">
         <span className="history-search__icon"><Icon name="search" size={14} /></span>
         <input
@@ -458,7 +458,7 @@ function DownloadList({ downloads, onOpenDownload, onRevealDownload, onPauseDown
   }
 
   return (
-    <div className="library-downloads-container" style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
+    <div className="library-downloads-container" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div className="history-search">
         <span className="history-search__icon"><Icon name="search" size={14} /></span>
         <input
@@ -552,6 +552,12 @@ export function LibraryPanel({ section, bookmarks, bookmarkFolders, history, dow
       <div className="library-panel__content">
         <div className="library-panel__section-heading">
           <h3>{section === "bookmarks" ? "Bookmarks" : section === "history" ? "History" : "Downloads"}</h3>
+          {section === "bookmarks" && (
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="library-clear" type="button" onClick={() => window.lilyBrowser.importBookmarks()}>Import</button>
+              <button className="library-clear" type="button" onClick={() => window.lilyBrowser.exportBookmarks()}>Export</button>
+            </div>
+          )}
           {section === "history" && history.length > 0 && <button className="library-clear" type="button" onClick={onClearHistory}>Clear history</button>}
           {section === "downloads" && hasCompletedDownloads && <button className="library-clear" type="button" onClick={onClearCompletedDownloads}>Clear completed</button>}
         </div>
