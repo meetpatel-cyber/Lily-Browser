@@ -417,3 +417,11 @@ button { -webkit-app-region: no-drag; }
   .library-tabs { padding-inline: 20px; }
   .library-panel__content { padding: 20px; }
 }
+
+.new-tab-top-sites { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 36px; width: 100%; }
+.new-tab-top-site { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 80px; gap: 10px; color: var(--fg-secondary); background: transparent; border: 0; cursor: pointer; transition: transform 130ms ease, opacity 130ms ease; opacity: 0.9; }
+.new-tab-top-site:hover { transform: translateY(-2px); opacity: 1; color: var(--fg-base); }
+.new-tab-top-site__icon { display: grid; place-items: center; width: 48px; height: 48px; background: var(--bg-panel); border: 1px solid var(--bg-active); border-radius: 12px; box-shadow: 0 4px 12px rgb(24 24 27 / 5%); transition: border-color 150ms ease, box-shadow 150ms ease; }
+.new-tab-top-site:hover .new-tab-top-site__icon { border-color: var(--accent-focus); box-shadow: 0 4px 12px rgb(99 102 241 / 15%); }
+.new-tab-top-site span { font-size: 11px; font-weight: 500; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+

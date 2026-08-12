@@ -265,7 +265,7 @@ export default function App() {
           permissions={browserState.permissions}
           onUpdatePreferences={(updates) => void window.lilyBrowser.updatePreferences(updates)}
           onClose={closeLibrary}
-        /> : activeTab?.isNewTab && <NewTabPage key={activeTab.id} onNavigate={submitAddress} />}
+        /> : activeTab?.isNewTab && <NewTabPage key={activeTab.id} onNavigate={submitAddress} history={browserState.history} />}
       </section>
 
       {isTabSearchVisible && (

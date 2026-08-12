@@ -1,18 +1,7 @@
 import * as React from "react";
 import type { Bookmark, BookmarkFolder, DownloadRecord, HistoryEntry } from "../../shared/browser";
-import { Icon, type IconName } from "./Icon";
-import { useState } from "react";
-
-function FaviconIcon({ url, fallback, filled = false }: { url: string; fallback: IconName; filled?: boolean }) {
-  const [error, setError] = useState(false);
-  if (error) return <Icon name={fallback} size={16} filled={filled} />;
-  try {
-    const hostname = new URL(url).hostname;
-    return <img src={`lily-favicon://${hostname}`} width={16} height={16} onError={() => setError(true)} style={{ objectFit: 'contain' }} alt="" />;
-  } catch {
-    return <Icon name={fallback} size={16} filled={filled} />;
-  }
-}
+import { Icon } from "./Icon";
+import { FaviconIcon } from "./FaviconIcon";
 
 export type LibrarySection = "bookmarks" | "history" | "downloads";
 
