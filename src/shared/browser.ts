@@ -67,6 +67,7 @@ export interface BrowserState {
   bookmarkFolders: BookmarkFolder[];
   history: HistoryEntry[];
   downloads: DownloadRecord[];
+  shortcuts: Shortcut[];
   preferences: BrowserPreferences;
   permissions: SitePermissions;
   pendingPermissions: PendingPermission[];
@@ -116,6 +117,12 @@ export interface HistoryEntry {
   title: string;
   url: string;
   visitedAt: number;
+}
+
+export interface Shortcut {
+  id: string;
+  title: string;
+  url: string;
 }
 
 export type DownloadStatus = "in-progress" | "completed" | "cancelled" | "failed";

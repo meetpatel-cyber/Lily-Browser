@@ -111,6 +111,7 @@ function getSnapshot(): BrowserState {
     bookmarkFolders: dataStore.getBookmarkFolders(),
     history: dataStore.getHistory(),
     downloads: downloads.map(toPublicDownload),
+    shortcuts: dataStore.getShortcuts(),
     preferences: prefs,
     permissions: dataStore.getPermissions(),
     pendingPermissions: [...pendingPermissions],
@@ -1370,6 +1371,27 @@ function registerIpcHandlers(): void {
   ipcMain.handle("browser:update-bookmark", (_event, bookmarkId: unknown, url: unknown, title: unknown, folderId: unknown) => {
     if (typeof bookmarkId === "string" && typeof url === "string" && typeof title === "string") {
       dataStore.updateBookmark(bookmarkId, url, title, typeof folderId === "string" ? folderId : undefined);
+      publishState();
+    }
+  });
+
+  ipcMain.handle("browser:add-shortcut", (_event, url: unknown, title: unknown) => {
+    if (typeof url === "string" && typeof title === "string") {
+      dataStore.addShortcut(url, title);
+      publishState();
+    }
+  });
+
+  ipcMain.handle("browser:update-shortcut", (_event, shortcutId: unknown, url: unknown, title: unknown) => {
+    if (typeof shortcutId === "string" && typeof url === "string" && typeof title === "string") {
+      dataStore.updateShortcut(shortcutId, url, title);
+      publishState();
+    }
+  });
+
+  ipcMain.handle("browser:remove-shortcut", (_event, shortcutId: unknown) => {
+    if (isIdentifier(shortcutId)) {
+      dataStore.removeShortcut(shortcutId);
       publishState();
     }
   });

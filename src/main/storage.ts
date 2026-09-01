@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { app } from "electron";
-import type { Bookmark, BookmarkFolder, BrowserPreferences, DownloadRecord, DownloadStatus, HistoryEntry, PermissionCategory, PermissionDecision, SitePermissions } from "../shared/browser";
+import type { Bookmark, BookmarkFolder, BrowserPreferences, DownloadRecord, DownloadStatus, HistoryEntry, PermissionCategory, PermissionDecision, SitePermissions, Shortcut } from "../shared/browser";
 
 const DATA_VERSION = 1;
 const MAX_BOOKMARKS = 5000;
@@ -25,6 +25,7 @@ interface StoredBrowserData {
   bookmarkFolders: BookmarkFolder[];
   history: HistoryEntry[];
   downloads: StoredDownload[];
+  shortcuts: Shortcut[];
   session: SessionSnapshot;
   preferences: BrowserPreferences;
   permissions: SitePermissions;
@@ -37,6 +38,7 @@ function emptyData(): StoredBrowserData {
     bookmarkFolders: [],
     history: [],
     downloads: [],
+    shortcuts: [],
     session: { tabs: [], activeIndex: 0 },
     preferences: {
       searchEngine: "duckduckgo",
@@ -197,10 +199,24 @@ function sanitizeData(value: unknown): StoredBrowserData {
     bookmarkFolders: sanitizeBookmarkFolders((value as Record<string, unknown>).bookmarkFolders),
     history: sanitizeHistory(value.history),
     downloads: sanitizeDownloads(value.downloads),
+    shortcuts: sanitizeShortcuts((value as Record<string, unknown>).shortcuts),
     session: sanitizeSession(value.session),
     preferences: sanitizePreferences(value.preferences),
     permissions: sanitizePermissions((value as Record<string, unknown>).permissions)
   };
+}
+
+function sanitizeShortcuts(value: unknown): Shortcut[] {
+  if (!Array.isArray(value)) return [];
+  return value.reduce<Shortcut[]>((shortcuts, item) => {
+    if (!isObject(item) || !isHttpUrl(item.url)) return shortcuts;
+    shortcuts.push({
+      id: readText(item.id, randomUUID(), 128),
+      url: item.url,
+      title: readText(item.title, item.url, 256)
+    });
+    return shortcuts;
+  }, []).slice(0, 20); // Limit shortcuts count
 }
 
 function sanitizePermissions(value: unknown): SitePermissions {
@@ -247,6 +263,10 @@ export class BrowserDataStore {
 
   getDownloads(): StoredDownload[] {
     return this.data.downloads.map((download) => ({ ...download }));
+  }
+
+  getShortcuts(): Shortcut[] {
+    return this.data.shortcuts.map((shortcut) => ({ ...shortcut }));
   }
 
   getSession(): SessionSnapshot {
@@ -406,6 +426,29 @@ export class BrowserDataStore {
     const next = this.data.bookmarks.filter((bookmark) => bookmark.id !== bookmarkId);
     if (next.length !== this.data.bookmarks.length) {
       this.data.bookmarks = next;
+      this.persist();
+    }
+  }
+
+  addShortcut(url: string, title: string): void {
+    if (this.data.shortcuts.length >= 20) return;
+    this.data.shortcuts.push({ id: randomUUID(), url, title: readText(title, url) });
+    this.persist();
+  }
+
+  updateShortcut(shortcutId: string, url: string, title: string): void {
+    const shortcut = this.data.shortcuts.find((s) => s.id === shortcutId);
+    if (shortcut) {
+      shortcut.url = url;
+      shortcut.title = readText(title, url);
+      this.persist();
+    }
+  }
+
+  removeShortcut(shortcutId: string): void {
+    const next = this.data.shortcuts.filter((shortcut) => shortcut.id !== shortcutId);
+    if (next.length !== this.data.shortcuts.length) {
+      this.data.shortcuts = next;
       this.persist();
     }
   }

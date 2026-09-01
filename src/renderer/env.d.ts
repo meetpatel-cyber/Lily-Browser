@@ -17,6 +17,9 @@ declare global {
       toggleBookmark: (tabId: string) => Promise<void>;
       removeBookmark: (bookmarkId: string) => Promise<void>;
       updateBookmark: (bookmarkId: string, url: string, title: string, folderId?: string) => Promise<void>;
+      addShortcut: (url: string, title: string) => Promise<void>;
+      updateShortcut: (shortcutId: string, url: string, title: string) => Promise<void>;
+      removeShortcut: (shortcutId: string) => Promise<void>;
       createBookmarkFolder: (name: string) => Promise<string>;
       renameBookmarkFolder: (folderId: string, name: string) => Promise<void>;
       deleteBookmarkFolder: (folderId: string) => Promise<boolean>;
