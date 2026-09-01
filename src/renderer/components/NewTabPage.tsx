@@ -1,9 +1,9 @@
-import { type FormEvent, useState, useRef, useEffect, useMemo } from "react";
+import { type FormEvent, useState, useRef, useEffect } from "react";
 import { Icon } from "./Icon";
 import { FaviconIcon } from "./FaviconIcon";
-import type { HistoryEntry, Shortcut, BrowserPreferences } from "../../shared/browser";
+import type { Shortcut, BrowserPreferences } from "../../shared/browser";
 
-export function NewTabPage({ onNavigate, history, shortcuts = [], preferences }: { onNavigate: (value: string) => void; history?: HistoryEntry[]; shortcuts?: Shortcut[]; preferences?: BrowserPreferences }) {
+export function NewTabPage({ onNavigate, topSites = [], shortcuts = [], preferences }: { onNavigate: (value: string) => void; topSites?: { url: string; title: string }[]; shortcuts?: Shortcut[]; preferences?: BrowserPreferences }) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const [editingShortcut, setEditingShortcut] = useState<Shortcut | { id: "new", url: string, title: string } | null>(null);
@@ -11,9 +11,20 @@ export function NewTabPage({ onNavigate, history, shortcuts = [], preferences }:
   const [editTitle, setEditTitle] = useState("");
   const [isCustomizing, setIsCustomizing] = useState(false);
   const customizationRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (!isCustomizing) return;
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!isCustomizing) {
+      if (previousFocusRef.current && !editingShortcut) {
+        previousFocusRef.current.focus();
+        previousFocusRef.current = null;
+      }
+      return;
+    }
     
     const handleClickOutside = (e: MouseEvent) => {
       if (customizationRef.current && !customizationRef.current.contains(e.target as Node)) {
@@ -33,47 +44,32 @@ export function NewTabPage({ onNavigate, history, shortcuts = [], preferences }:
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isCustomizing]);
+  }, [isCustomizing, editingShortcut]);
 
   useEffect(() => {
-    if (!editingShortcut) {
-      inputRef.current?.focus();
+    if (!editingShortcut && previousFocusRef.current && !isCustomizing) {
+      previousFocusRef.current.focus();
+      previousFocusRef.current = null;
     }
-  }, [editingShortcut]);
+
+    if (!editingShortcut) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setEditingShortcut(null);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [editingShortcut, isCustomizing]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     onNavigate(query);
   };
 
-  const topSites = useMemo(() => {
-    if (!history) return [];
-    
-    const counts = new Map<string, { count: number; url: string; title: string }>();
-
-    for (const entry of history) {
-      try {
-        const urlObj = new URL(entry.url);
-        if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") continue;
-        
-        const host = urlObj.hostname;
-        
-        if (counts.has(host)) {
-          counts.get(host)!.count++;
-        } else {
-          counts.set(host, { count: 1, url: entry.url, title: entry.title });
-        }
-      } catch {
-        continue;
-      }
-    }
-
-    return Array.from(counts.values())
-      .sort((a, b) => b.count !== a.count ? b.count - a.count : a.title.localeCompare(b.title))
-      .slice(0, 8);
-  }, [history]);
-
   const openShortcutModal = (shortcut?: Shortcut) => {
+    previousFocusRef.current = document.activeElement as HTMLElement;
     if (shortcut) {
       setEditingShortcut(shortcut);
       setEditUrl(shortcut.url);
@@ -83,6 +79,13 @@ export function NewTabPage({ onNavigate, history, shortcuts = [], preferences }:
       setEditUrl("");
       setEditTitle("");
     }
+  };
+
+  const toggleCustomization = () => {
+    if (!isCustomizing) {
+      previousFocusRef.current = document.activeElement as HTMLElement;
+    }
+    setIsCustomizing(!isCustomizing);
   };
 
   const saveShortcut = () => {
@@ -114,13 +117,13 @@ export function NewTabPage({ onNavigate, history, shortcuts = [], preferences }:
       aria-label="New tab"
       style={preferences?.newTabBackground ? { backgroundImage: `url(${preferences.newTabBackground})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
     >
-      <div className="new-tab-page__content">
+      <div className="new-tab-page__content" inert={editingShortcut ? true : undefined}>
         <div className="lily-mark" aria-hidden="true">L</div>
         <h1>Lily</h1>
         <p>Search the web or enter a site address.</p>
         <form className="new-tab-search" onSubmit={submit}>
           <Icon name="search" size={19} />
-          <input ref={inputRef} aria-label="Search the web" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="What would you like to find?" />
+          <input ref={inputRef} aria-label="Search the web" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="What would you like to find?" />
           <button type="submit" aria-label="Search"><Icon name="forward" size={18} /></button>
         </form>
         <span className="new-tab-hint">Tip: press Ctrl+L to focus the address bar.</span>
@@ -198,12 +201,12 @@ export function NewTabPage({ onNavigate, history, shortcuts = [], preferences }:
         </div>
       )}
 
-      <div className="new-tab-customization-controls" ref={customizationRef}>
+      <div className="new-tab-customization-controls" ref={customizationRef} inert={editingShortcut ? true : undefined}>
         <button 
           className="new-tab-customization-toggle" 
           aria-label="Customize New Tab page" 
           aria-expanded={isCustomizing}
-          onClick={() => setIsCustomizing(!isCustomizing)}
+          onClick={toggleCustomization}
         >
           <Icon name="edit" size={20} />
         </button>

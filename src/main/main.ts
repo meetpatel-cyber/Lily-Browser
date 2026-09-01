@@ -113,6 +113,7 @@ function getSnapshot(): BrowserState {
     history: dataStore.getHistory(),
     downloads: downloads.map(toPublicDownload),
     shortcuts: dataStore.getShortcuts(),
+    topSites: dataStore.getTopSites(),
     preferences: prefs,
     permissions: dataStore.getPermissions(),
     pendingPermissions: [...pendingPermissions],

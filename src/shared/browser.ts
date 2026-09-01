@@ -71,6 +71,7 @@ export interface BrowserState {
   history: HistoryEntry[];
   downloads: DownloadRecord[];
   shortcuts: Shortcut[];
+  topSites: { url: string; title: string }[];
   preferences: BrowserPreferences;
   permissions: SitePermissions;
   pendingPermissions: PendingPermission[];

@@ -252,10 +252,42 @@ function sanitizePermissions(value: unknown): SitePermissions {
 export class BrowserDataStore {
   private readonly filePath: string;
   private data: StoredBrowserData;
+  private cachedTopSites: { url: string; title: string }[] = [];
 
   constructor(userDataPath: string) {
     this.filePath = path.join(userDataPath, "lily-browser-data.json");
     this.data = this.read();
+    this.recalculateTopSites();
+  }
+
+  private recalculateTopSites(): void {
+    const counts = new Map<string, { count: number; url: string; title: string }>();
+
+    for (const entry of this.data.history) {
+      try {
+        const urlObj = new URL(entry.url);
+        if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") continue;
+        
+        const host = urlObj.hostname;
+        
+        if (counts.has(host)) {
+          counts.get(host)!.count++;
+        } else {
+          counts.set(host, { count: 1, url: entry.url, title: entry.title });
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    this.cachedTopSites = Array.from(counts.values())
+      .sort((a, b) => b.count !== a.count ? b.count - a.count : a.title.localeCompare(b.title))
+      .slice(0, 8)
+      .map(item => ({ url: item.url, title: item.title }));
+  }
+
+  getTopSites(): { url: string; title: string }[] {
+    return this.cachedTopSites;
   }
 
   getBookmarks(): Bookmark[] {
@@ -476,6 +508,7 @@ export class BrowserDataStore {
     this.data.history.unshift(entry);
     this.data.history = this.data.history.slice(0, MAX_HISTORY_ENTRIES);
     this.persist();
+    this.recalculateTopSites();
     return { ...entry };
   }
 
@@ -484,12 +517,14 @@ export class BrowserDataStore {
     if (!entry || entry.title === title) return;
     entry.title = readText(title, entry.url);
     this.persist();
+    this.recalculateTopSites();
   }
 
   clearHistory(): void {
     if (this.data.history.length > 0) {
       this.data.history = [];
       this.persist();
+      this.recalculateTopSites();
     }
   }
 
@@ -498,6 +533,7 @@ export class BrowserDataStore {
     if (next.length !== this.data.history.length) {
       this.data.history = next;
       this.persist();
+      this.recalculateTopSites();
     }
   }
 
