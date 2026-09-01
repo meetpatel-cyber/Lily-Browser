@@ -104,6 +104,42 @@ export function SettingsPanel({ preferences, permissions, onUpdatePreferences, o
         </div>
 
         <div className="library-panel__section-heading" style={{ marginTop: "24px" }}>
+          <h3>New Tab</h3>
+        </div>
+
+        <div className="settings-group">
+          <div className="settings-item">
+            <div className="settings-item__info">
+              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  className="settings-checkbox"
+                  checked={preferences.newTabShowShortcuts !== false}
+                  onChange={(e) => onUpdatePreferences({ newTabShowShortcuts: e.target.checked })}
+                  style={{ cursor: "pointer" }}
+                />
+                Show user shortcuts
+              </label>
+            </div>
+          </div>
+          
+          <div className="settings-item">
+            <div className="settings-item__info">
+              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  className="settings-checkbox"
+                  checked={preferences.newTabShowTopSites !== false}
+                  onChange={(e) => onUpdatePreferences({ newTabShowTopSites: e.target.checked })}
+                  style={{ cursor: "pointer" }}
+                />
+                Show frequently visited sites
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div className="library-panel__section-heading" style={{ marginTop: "24px" }}>
           <h3>Downloads</h3>
         </div>
 

@@ -57,6 +57,9 @@ export interface BrowserPreferences {
   downloadLocation: string; // read-only property for UI
   askWhereToSave: boolean;
   appearance: AppearanceMode;
+  newTabShowShortcuts: boolean;
+  newTabShowTopSites: boolean;
+  newTabBackground?: string;
 }
 
 export interface BrowserState {

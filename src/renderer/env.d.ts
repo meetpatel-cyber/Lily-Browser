@@ -43,6 +43,7 @@ declare global {
       stopFindInPage: (tabId: string, keepSelection: boolean) => Promise<void>;
       setFindVisible: (tabId: string, visible: boolean) => Promise<void>;
       updatePreferences: (updates: Partial<import("../shared/browser").BrowserPreferences>) => Promise<void>;
+      chooseNewTabBackground: () => Promise<void>;
       chooseDownloadLocation: () => Promise<string | undefined>;
       setLibraryVisible: (visible: boolean) => void;
       setContentBounds: (bounds: BrowserBounds) => void;

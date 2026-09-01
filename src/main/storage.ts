@@ -45,7 +45,10 @@ function emptyData(): StoredBrowserData {
       startupBehavior: "continue",
       downloadLocation: app.getPath("downloads"),
       askWhereToSave: false,
-      appearance: "system"
+      appearance: "system",
+      newTabShowShortcuts: true,
+      newTabShowTopSites: true,
+      newTabBackground: ""
     },
     permissions: {}
   };
@@ -181,13 +184,19 @@ function sanitizePreferences(value: unknown): BrowserPreferences {
 
   const askWhereToSave = typeof value.askWhereToSave === "boolean" ? value.askWhereToSave : defaultPrefs.askWhereToSave;
   const appearance = value.appearance === "light" || value.appearance === "dark" ? value.appearance : "system";
+  const newTabShowShortcuts = typeof value.newTabShowShortcuts === "boolean" ? value.newTabShowShortcuts : defaultPrefs.newTabShowShortcuts;
+  const newTabShowTopSites = typeof value.newTabShowTopSites === "boolean" ? value.newTabShowTopSites : defaultPrefs.newTabShowTopSites;
+  const newTabBackground = typeof value.newTabBackground === "string" ? value.newTabBackground : defaultPrefs.newTabBackground;
 
   return {
     searchEngine,
     startupBehavior,
     downloadLocation,
     askWhereToSave,
-    appearance
+    appearance,
+    newTabShowShortcuts,
+    newTabShowTopSites,
+    newTabBackground
   };
 }
 
@@ -325,6 +334,15 @@ export class BrowserDataStore {
     }
     if (updates.appearance && ["light", "dark", "system"].includes(updates.appearance)) {
       this.data.preferences.appearance = updates.appearance;
+    }
+    if (typeof updates.newTabShowShortcuts === "boolean") {
+      this.data.preferences.newTabShowShortcuts = updates.newTabShowShortcuts;
+    }
+    if (typeof updates.newTabShowTopSites === "boolean") {
+      this.data.preferences.newTabShowTopSites = updates.newTabShowTopSites;
+    }
+    if (typeof updates.newTabBackground === "string") {
+      this.data.preferences.newTabBackground = updates.newTabBackground;
     }
     this.persist();
   }

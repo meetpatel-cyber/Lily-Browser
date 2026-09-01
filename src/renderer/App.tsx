@@ -10,7 +10,7 @@ import { PermissionBanner } from "./components/PermissionBanner";
 import { TabSearch } from "./components/TabSearch";
 import { addressLabel, toNavigationUrl } from "./lib/navigation";
 
-const emptyState: BrowserState = { tabs: [], tabGroups: {}, activeTabId: "", bookmarks: [], bookmarkFolders: [], history: [], downloads: [], shortcuts: [], preferences: { searchEngine: "duckduckgo", startupBehavior: "continue", downloadLocation: "", askWhereToSave: false, appearance: "system" }, permissions: {}, pendingPermissions: [], effectiveTheme: "light" };
+const emptyState: BrowserState = { tabs: [], tabGroups: {}, activeTabId: "", bookmarks: [], bookmarkFolders: [], history: [], downloads: [], shortcuts: [], preferences: { searchEngine: "duckduckgo", startupBehavior: "continue", downloadLocation: "", askWhereToSave: false, appearance: "system", newTabShowShortcuts: true, newTabShowTopSites: true, newTabBackground: "" }, permissions: {}, pendingPermissions: [], effectiveTheme: "light" };
 
 export default function App() {
   const [browserState, setBrowserState] = useState<BrowserState>(emptyState);
@@ -265,7 +265,7 @@ export default function App() {
           permissions={browserState.permissions}
           onUpdatePreferences={(updates) => void window.lilyBrowser.updatePreferences(updates)}
           onClose={closeLibrary}
-        /> : activeTab?.isNewTab && <NewTabPage key={activeTab.id} onNavigate={submitAddress} history={browserState.history} shortcuts={browserState.shortcuts} />}
+        /> : activeTab?.isNewTab && <NewTabPage key={activeTab.id} onNavigate={submitAddress} history={browserState.history} shortcuts={browserState.shortcuts} preferences={browserState.preferences} />}
       </section>
 
       {isTabSearchVisible && (

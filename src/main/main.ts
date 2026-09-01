@@ -8,7 +8,8 @@ import { parseBookmarkHtml, generateBookmarkHtml } from "./bookmarks-parser";
 import { initFaviconCache, fetchAndCacheFavicon } from "./favicon-cache";
 
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'lily-favicon', privileges: { standard: true, secure: true, supportFetchAPI: true, bypassCSP: true } }
+  { scheme: 'lily-favicon', privileges: { standard: true, secure: true, supportFetchAPI: true, bypassCSP: true } },
+  { scheme: 'lily-bg', privileges: { standard: true, secure: true, supportFetchAPI: true, bypassCSP: true } }
 ]);
 
 interface TabRecord {
@@ -1480,6 +1481,25 @@ function registerIpcHandlers(): void {
       publishState();
     }
   });
+
+  ipcMain.handle("browser:choose-new-tab-background", async () => {
+    if (!mainWindow) return;
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ["openFile"],
+      filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp", "gif"] }]
+    });
+    if (!result.canceled && result.filePaths.length > 0) {
+      try {
+        const src = result.filePaths[0];
+        const dest = path.join(app.getPath("userData"), "custom-background");
+        import("node:fs").then(fs => fs.copyFileSync(src, dest));
+        dataStore.updatePreferences({ newTabBackground: `lily-bg://image?t=${Date.now()}` });
+        publishState();
+      } catch (e) {
+        console.error("Failed to copy background image", e);
+      }
+    }
+  });
   ipcMain.handle("browser:clear-history", () => {
     dataStore.clearHistory();
     recentHistoryUrls.clear();
@@ -1782,6 +1802,20 @@ function setupPermissions(): void {
 
 app.whenReady().then(() => {
   initFaviconCache();
+
+  protocol.handle("lily-bg", () => {
+    const bgPath = path.join(app.getPath("userData"), "custom-background");
+    if (existsSync(bgPath)) {
+      try {
+        const buffer = readFileSync(bgPath);
+        return new Response(buffer);
+      } catch (e) {
+        console.error("Failed to read custom-background", e);
+      }
+    }
+    return new Response(null, { status: 404 });
+  });
+
   dataStore = new BrowserDataStore(app.getPath("userData"));
   downloads = dataStore.getDownloads();
   
