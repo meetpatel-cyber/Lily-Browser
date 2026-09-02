@@ -76,6 +76,8 @@ export interface BrowserState {
   permissions: SitePermissions;
   pendingPermissions: PendingPermission[];
   effectiveTheme: "light" | "dark";
+  isPrivateWindow?: boolean;
+  privateHistoryEnabled?: boolean;
 }
 export interface BrowserBounds {
   x: number;
@@ -114,6 +116,7 @@ export interface Bookmark {
   url: string;
   createdAt: number;
   folderId?: string;
+  isPrivateOrigin?: boolean;
 }
 
 export interface HistoryEntry {

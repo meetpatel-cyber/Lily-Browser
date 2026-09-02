@@ -26,6 +26,7 @@ declare global {
       importBookmarks: () => Promise<void>;
       exportBookmarks: () => Promise<void>;
       clearHistory: () => Promise<void>;
+      togglePrivateHistory: (enabled: boolean) => Promise<void>;
       clearBrowsingData: (options: ClearBrowsingDataOptions) => Promise<void>;
       resolvePermission: (reqId: string, decision: "allow" | "block" | "dismiss") => Promise<void>;
       removePermission: (origin: string, category: string) => Promise<void>;

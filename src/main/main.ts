@@ -38,6 +38,10 @@ interface BrowserWindowContext {
   libraryVisible: boolean;
   isPrimarySession?: boolean;
   recentlyClosedTabs: ClosedTabState[];
+  privateHistoryEnabled: boolean;
+  privateHistory: import("../shared/browser").HistoryEntry[];
+  privateDownloads: StoredDownload[];
+  privatePermissions: import("../shared/browser").SitePermissions;
 }
 
 const browserWindows = new Map<number, BrowserWindowContext>();
@@ -136,16 +140,17 @@ function getSnapshot(ctx: BrowserWindowContext): BrowserState {
     activeTabId: ctx.activeTabId,
     bookmarks: dataStore.getBookmarks(),
     bookmarkFolders: dataStore.getBookmarkFolders(),
-    history: dataStore.getHistory(),
-    downloads: downloads.map(toPublicDownload),
+    history: ctx.isPrivate ? ctx.privateHistory : dataStore.getHistory(),
+    downloads: (ctx.isPrivate ? ctx.privateDownloads : downloads).map(toPublicDownload),
     shortcuts: dataStore.getShortcuts(),
     topSites: dataStore.getTopSites(),
     preferences: prefs,
-    permissions: dataStore.getPermissions(),
-    pendingPermissions: [...pendingPermissions],
+    permissions: ctx.isPrivate ? ctx.privatePermissions : dataStore.getPermissions(),
+    pendingPermissions: [...pendingPermissions].filter(p => !ctx.isPrivate || p.tabId === ctx.activeTabId),
     effectiveTheme,
-    isPrivateWindow: ctx.isPrivate
-  } as BrowserState & { isPrivateWindow?: boolean };
+    isPrivateWindow: ctx.isPrivate,
+    privateHistoryEnabled: ctx.privateHistoryEnabled
+  } as BrowserState;
 }
 
 function enforceTabOrder(ctx: BrowserWindowContext): void {
@@ -510,8 +515,18 @@ function recordHistoryVisit(ctx: BrowserWindowContext, record: TabRecord): void 
   const { url, title, error, isNewTab } = record.state;
   if (isNewTab || error || record.lastFailedUrl === url || !isAllowedNavigation(url)) return;
   
-  if (!ctx.isPrivate) {
-    const now = Date.now();
+  const now = Date.now();
+  if (ctx.isPrivate) {
+    if (ctx.privateHistoryEnabled) {
+      const lastVisit = record.lastHistoryVisit;
+      if (lastVisit?.url === url && now - lastVisit.recordedAt < HISTORY_DEDUPLICATION_WINDOW) {
+        return;
+      }
+      const entryId = randomUUID();
+      ctx.privateHistory.unshift({ id: entryId, url, title: title || fallbackTitle(url), visitedAt: now });
+      record.lastHistoryVisit = { id: entryId, url, recordedAt: now };
+    }
+  } else {
     const lastVisit = record.lastHistoryVisit;
     const recentlyVisited = recentHistoryUrls.get(url) ?? 0;
     if ((lastVisit?.url === url && now - lastVisit.recordedAt < HISTORY_DEDUPLICATION_WINDOW) || now - recentlyVisited < HISTORY_DEDUPLICATION_WINDOW) {
@@ -529,8 +544,16 @@ function recordHistoryVisit(ctx: BrowserWindowContext, record: TabRecord): void 
 }
 
 function updateHistoryTitle(ctx: BrowserWindowContext, record: TabRecord): void {
-  if (ctx.isPrivate) return;
   const lastVisit = record.lastHistoryVisit;
+  if (ctx.isPrivate) {
+    if (ctx.privateHistoryEnabled && lastVisit?.url === record.state.url) {
+      const entry = ctx.privateHistory.find(h => h.id === lastVisit.id);
+      if (entry) {
+        entry.title = record.state.title || fallbackTitle(record.state.url);
+      }
+    }
+    return;
+  }
   if (lastVisit?.url === record.state.url) {
     dataStore.updateHistoryTitle(lastVisit.id, record.state.title || fallbackTitle(record.state.url));
   }
@@ -886,7 +909,7 @@ function openHome(ctx: BrowserWindowContext, tabId: string): void {
 function toggleBookmark(ctx: BrowserWindowContext, tabId: string): void {
   const record = ctx.tabs.get(tabId);
   if (!record || record.state.isNewTab || record.state.isLoading || record.state.error || !isAllowedNavigation(record.state.url)) return;
-  const added = dataStore.toggleBookmark(record.state.url, record.state.title || fallbackTitle(record.state.url));
+  const added = dataStore.toggleBookmark(record.state.url, record.state.title || fallbackTitle(record.state.url), ctx.isPrivate);
   publishAllStates();
   if (added && record.state.favicon) {
     try { fetchAndCacheFavicon(new URL(record.state.url).hostname, record.state.favicon); }
@@ -998,8 +1021,11 @@ function getSafeDownloadPath(baseDir: string, filename: string): string {
   }
 }
 
-function registerDownloadHandler(): void {
-  session.defaultSession.on("will-download", (_event, item) => {
+function registerDownloadHandler(sess: Electron.Session = session.defaultSession): void {
+  sess.on("will-download", (event, item, webContents) => {
+    const ctx = getContextFromWebContents(webContents);
+    const isPrivate = ctx?.isPrivate || false;
+    const targetDownloads = isPrivate && ctx ? ctx.privateDownloads : downloads;
     const downloadId = randomUUID();
     const now = Date.now();
     const download: StoredDownload = {
@@ -1031,8 +1057,8 @@ function registerDownloadHandler(): void {
       lastTime: now
     });
 
-    downloads.unshift(download);
-    dataStore.saveDownloads(downloads);
+    targetDownloads.unshift(download);
+    if (!isPrivate) dataStore.saveDownloads(downloads);
     publishAllStates();
 
     item.on("updated", (_updateEvent, state) => {
@@ -1083,8 +1109,8 @@ function registerDownloadHandler(): void {
         }
       } else if (state === "cancelled") {
         if (!item.getSavePath()) {
-          const idx = downloads.findIndex(d => d.id === downloadId);
-          if (idx !== -1) downloads.splice(idx, 1);
+          const idx = targetDownloads.findIndex(d => d.id === downloadId);
+          if (idx !== -1) targetDownloads.splice(idx, 1);
         } else {
           download.status = "cancelled";
           download.error = "Download cancelled.";
@@ -1096,7 +1122,7 @@ function registerDownloadHandler(): void {
           new Notification({ title: "Download Failed", body: download.filename }).show();
         }
       }
-      dataStore.saveDownloads(downloads);
+      if (!isPrivate) dataStore.saveDownloads(downloads);
       publishAllStates();
     });
   });
@@ -1107,11 +1133,12 @@ function updateDownloadConfig(): void {
   session.defaultSession.setDownloadPath(prefs.downloadLocation);
 }
 
-function pauseDownload(downloadId: string): void {
+function pauseDownload(ctx: BrowserWindowContext, downloadId: string): void {
   const tracker = activeDownloads.get(downloadId);
   if (tracker && !tracker.item.isPaused()) {
     tracker.item.pause();
-    const download = downloads.find((item) => item.id === downloadId);
+    const list = ctx.isPrivate ? ctx.privateDownloads : downloads;
+    const download = list.find((item) => item.id === downloadId);
     if (download) {
       download.isPaused = true;
       download.canResume = tracker.item.canResume();
@@ -1121,11 +1148,12 @@ function pauseDownload(downloadId: string): void {
   }
 }
 
-function resumeDownload(downloadId: string): void {
+function resumeDownload(ctx: BrowserWindowContext, downloadId: string): void {
   const tracker = activeDownloads.get(downloadId);
   if (tracker && tracker.item.isPaused() && tracker.item.canResume()) {
     tracker.item.resume();
-    const download = downloads.find((item) => item.id === downloadId);
+    const list = ctx.isPrivate ? ctx.privateDownloads : downloads;
+    const download = list.find((item) => item.id === downloadId);
     if (download) {
       download.isPaused = false;
       download.canResume = true;
@@ -1143,34 +1171,37 @@ function cancelDownload(downloadId: string): void {
   }
 }
 
-function removeDownload(downloadId: string): void {
-  const index = downloads.findIndex((d) => d.id === downloadId);
+function removeDownload(ctx: BrowserWindowContext, downloadId: string): void {
+  const list = ctx.isPrivate ? ctx.privateDownloads : downloads;
+  const index = list.findIndex((d) => d.id === downloadId);
   if (index === -1) return;
   
-  const download = downloads[index];
+  const download = list[index];
   if (download.status === "in-progress") return;
   
-  downloads.splice(index, 1);
-  dataStore.saveDownloads(downloads);
+  list.splice(index, 1);
+  if (!ctx.isPrivate) dataStore.saveDownloads(list);
+  publishAllStates();
+}
+function clearCompletedDownloads(ctx: BrowserWindowContext): void {
+  if (ctx.isPrivate) {
+    ctx.privateDownloads = ctx.privateDownloads.filter((d) => d.status !== "completed");
+  } else {
+    const initialLength = downloads.length;
+    downloads = downloads.filter((d) => d.status !== "completed");
+    if (downloads.length !== initialLength) {
+      dataStore.saveDownloads(downloads);
+    }
+  }
   publishAllStates();
 }
 
-function clearCompletedDownloads(): void {
-  const initialLength = downloads.length;
-  downloads = downloads.filter((d) => d.status !== "completed");
-  
-  if (downloads.length !== initialLength) {
-    dataStore.saveDownloads(downloads);
-    publishAllStates();
-  }
-}
-
-function retryDownload(downloadId: string): void {
-  const download = downloads.find((d) => d.id === downloadId);
+function retryDownload(ctx: BrowserWindowContext, downloadId: string): void {
+  const list = ctx.isPrivate ? ctx.privateDownloads : downloads;
+  const download = list.find((d) => d.id === downloadId);
   if (!download || download.status !== "failed" || !download.url) return;
-  const win = BrowserWindow.getAllWindows()[0];
-  if (win && !win.isDestroyed()) {
-    win.webContents.downloadURL(download.url);
+  if (ctx.window && !ctx.window.isDestroyed()) {
+    ctx.window.webContents.downloadURL(download.url);
   }
 }
 
@@ -1180,16 +1211,18 @@ function updateDownloadError(download: StoredDownload, message: string): void {
   publishAllStates();
 }
 
-function openCompletedDownload(downloadId: string): void {
-  const download = downloads.find((item) => item.id === downloadId);
+function openCompletedDownload(ctx: BrowserWindowContext, downloadId: string): void {
+  const list = ctx.isPrivate ? ctx.privateDownloads : downloads;
+  const download = list.find((item) => item.id === downloadId);
   if (!download || download.status !== "completed" || !download.savePath) return;
   void shell.openPath(download.savePath).then((error) => {
     if (error) updateDownloadError(download, "The downloaded file could not be opened.");
   });
 }
 
-function revealCompletedDownload(downloadId: string): void {
-  const download = downloads.find((item) => item.id === downloadId);
+function revealCompletedDownload(ctx: BrowserWindowContext, downloadId: string): void {
+  const list = ctx.isPrivate ? ctx.privateDownloads : downloads;
+  const download = list.find((item) => item.id === downloadId);
   if (!download || download.status !== "completed" || !download.savePath) return;
   if (!existsSync(download.savePath)) {
     updateDownloadError(download, "The downloaded file is no longer available at its saved location.");
@@ -1273,6 +1306,12 @@ function createWindow(isPrivate = false): void {
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
 
+  if (isPrivate && partitionId) {
+    const privSession = session.fromPartition(partitionId);
+    setupPermissions(privSession);
+    registerDownloadHandler(privSession);
+  }
+
   const isFirstNormal = Array.from(browserWindows.values()).filter(c => !c.isPrivate).length === 0;
   const ctx: BrowserWindowContext = {
     isPrimarySession: isFirstNormal && !isPrivate,
@@ -1285,7 +1324,11 @@ function createWindow(isPrivate = false): void {
     activeTabId: "",
     browserBounds: null,
     libraryVisible: false,
-    recentlyClosedTabs: []
+    recentlyClosedTabs: [],
+    privateHistoryEnabled: false,
+    privateHistory: [],
+    privateDownloads: [],
+    privatePermissions: {}
   };
 
   browserWindows.set(windowId, ctx);
@@ -1651,34 +1694,53 @@ function registerIpcHandlers(): void {
       }
     }
   });
-  ipcMain.handle("browser:clear-history", (event) => {
-      const ctx = getContextFromWebContents(event.sender);
-      if (!ctx) return;
+  
+  ipcMain.handle("browser:toggle-private-history", (event, enabled: boolean) => {
+    const ctx = getContextFromWebContents(event.sender);
+    if (ctx && ctx.isPrivate) {
+      ctx.privateHistoryEnabled = enabled;
+      publishAllStates();
+    }
+  });
+
+ipcMain.handle("browser:clear-history", (event) => {
+  const ctx = getContextFromWebContents(event.sender);
+  if (!ctx) return;
+  if (ctx.isPrivate) {
+    ctx.privateHistory = [];
+  } else {
     dataStore.clearHistory();
     recentHistoryUrls.clear();
-    publishAllStates();
-  });
-  ipcMain.handle("browser:clear-browsing-data", async (_event, options: { history: boolean; cookies: boolean; cache: boolean }) => {
+  }
+  publishAllStates();
+});
+  ipcMain.handle("browser:clear-browsing-data", async (event, options: { history: boolean; cookies: boolean; cache: boolean }) => {
+    const ctx = getContextFromWebContents(event.sender);
+    if (!ctx) return;
     if (!options || typeof options !== "object") return;
+    const sess = ctx.isPrivate && ctx.partitionId ? session.fromPartition(ctx.partitionId) : session.defaultSession;
     try {
       if (options.history) {
-        dataStore.clearHistory();
-        recentHistoryUrls.clear();
+        if (ctx.isPrivate) {
+          ctx.privateHistory = [];
+        } else {
+          dataStore.clearHistory();
+          recentHistoryUrls.clear();
+        }
       }
       if (options.cookies) {
-        await session.defaultSession.clearStorageData({
+        await sess.clearStorageData({
           storages: ["cookies", "filesystem", "indexdb", "localstorage", "serviceworkers", "cachestorage"]
         });
       }
       if (options.cache) {
-        await session.defaultSession.clearCache();
+        await sess.clearCache();
       }
       if (options.history) {
         publishAllStates();
       }
     } catch (error) {
       console.error("Failed to clear browsing data:", error);
-      throw error;
     }
   });
 
@@ -1720,11 +1782,19 @@ function registerIpcHandlers(): void {
     if (callbacks) {
       pendingPermissionCallbacks.delete(reqId);
       if (decision === "allow" || decision === "block") {
-        if (pending.category === "cameraAndMicrophone") {
-          dataStore.setPermission(pending.origin, "camera", decision);
-          dataStore.setPermission(pending.origin, "microphone", decision);
+        if (ctx.isPrivate) {
+          if (pending.category === "cameraAndMicrophone") {
+            ctx.privatePermissions[pending.origin] = { ...ctx.privatePermissions[pending.origin], camera: decision, microphone: decision };
+          } else {
+            ctx.privatePermissions[pending.origin] = { ...ctx.privatePermissions[pending.origin], [pending.category]: decision };
+          }
         } else {
-          dataStore.setPermission(pending.origin, pending.category, decision);
+          if (pending.category === "cameraAndMicrophone") {
+            dataStore.setPermission(pending.origin, "camera", decision);
+            dataStore.setPermission(pending.origin, "microphone", decision);
+          } else {
+            dataStore.setPermission(pending.origin, pending.category, decision);
+          }
         }
         for (const cb of callbacks) cb(decision === "allow");
       } else {
@@ -1738,7 +1808,16 @@ function registerIpcHandlers(): void {
       const ctx = getContextFromWebContents(event.sender);
       if (!ctx) return;
     if (typeof origin === "string" && typeof category === "string") {
-      dataStore.removePermission(origin, category as PermissionCategory);
+      if (ctx.isPrivate) {
+        if (ctx.privatePermissions[origin]) {
+          delete ctx.privatePermissions[origin][category as PermissionCategory];
+          if (Object.keys(ctx.privatePermissions[origin]).length === 0) {
+            delete ctx.privatePermissions[origin];
+          }
+        }
+      } else {
+        dataStore.removePermission(origin, category as PermissionCategory);
+      }
       publishAllStates();
     }
   });
@@ -1746,7 +1825,11 @@ function registerIpcHandlers(): void {
   ipcMain.handle("browser:clear-all-permissions", (event) => {
       const ctx = getContextFromWebContents(event.sender);
       if (!ctx) return;
-    dataStore.clearAllPermissions();
+    if (ctx.isPrivate) {
+      ctx.privatePermissions = {};
+    } else {
+      dataStore.clearAllPermissions();
+    }
     publishAllStates();
   });
 
@@ -1754,32 +1837,40 @@ function registerIpcHandlers(): void {
       const ctx = getContextFromWebContents(event.sender);
       if (!ctx) return;
     if (isIdentifier(historyId)) {
-      dataStore.removeHistoryEntry(historyId);
+      if (ctx.isPrivate) {
+        ctx.privateHistory = ctx.privateHistory.filter(h => h.id !== historyId);
+      } else {
+        dataStore.removeHistoryEntry(historyId);
+      }
       publishAllStates();
     }
   });
   ipcMain.handle("browser:open-download", (event, downloadId: unknown) => {
       const ctx = getContextFromWebContents(event.sender);
-      if (!ctx) return; if (isIdentifier(downloadId)) openCompletedDownload(downloadId); });
+      if (!ctx) return; if (isIdentifier(downloadId)) openCompletedDownload(ctx, downloadId); });
   ipcMain.handle("browser:reveal-download", (event, downloadId: unknown) => {
       const ctx = getContextFromWebContents(event.sender);
-      if (!ctx) return; if (isIdentifier(downloadId)) revealCompletedDownload(downloadId); });
+      if (!ctx) return; if (isIdentifier(downloadId)) revealCompletedDownload(ctx, downloadId); });
   ipcMain.handle("browser:pause-download", (event, downloadId: unknown) => {
       const ctx = getContextFromWebContents(event.sender);
-      if (!ctx) return; if (isIdentifier(downloadId)) pauseDownload(downloadId); });
+      if (!ctx) return; if (isIdentifier(downloadId)) pauseDownload(ctx, downloadId); });
   ipcMain.handle("browser:resume-download", (event, downloadId: unknown) => {
       const ctx = getContextFromWebContents(event.sender);
-      if (!ctx) return; if (isIdentifier(downloadId)) resumeDownload(downloadId); });
+      if (!ctx) return; if (isIdentifier(downloadId)) resumeDownload(ctx, downloadId); });
   ipcMain.handle("browser:cancel-download", (event, downloadId: unknown) => {
       const ctx = getContextFromWebContents(event.sender);
       if (!ctx) return; if (isIdentifier(downloadId)) cancelDownload(downloadId); });
   ipcMain.handle("browser:remove-download", (event, downloadId: unknown) => {
       const ctx = getContextFromWebContents(event.sender);
-      if (!ctx) return; if (isIdentifier(downloadId)) removeDownload(downloadId); });
+      if (!ctx) return; if (isIdentifier(downloadId)) removeDownload(ctx, downloadId); });
   ipcMain.handle("browser:retry-download", (event, downloadId: unknown) => {
       const ctx = getContextFromWebContents(event.sender);
-      if (!ctx) return; if (isIdentifier(downloadId)) retryDownload(downloadId); });
-  ipcMain.handle("browser:clear-completed-downloads", () => clearCompletedDownloads());
+      if (!ctx) return; if (isIdentifier(downloadId)) retryDownload(ctx, downloadId); });
+  ipcMain.handle("browser:clear-completed-downloads", (event) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
+      clearCompletedDownloads(ctx);
+  });
   ipcMain.handle("browser:choose-download-location", async (event) => {
       const ctx = getContextFromWebContents(event.sender);
       if (!ctx) return;
@@ -1866,8 +1957,10 @@ function registerIpcHandlers(): void {
   });
 }
 
-function setupPermissions(): void {
-  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+function setupPermissions(sess: Electron.Session = session.defaultSession): void {
+  sess.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    const ctx = getContextFromWebContents(webContents);
+    const isPrivate = ctx?.isPrivate || false;
     let category: PermissionCategory | null = null;
     let isCombinedMedia = false;
     
@@ -1905,8 +1998,8 @@ function setupPermissions(): void {
     
     let promptCategory = category;
     if (isCombinedMedia) {
-      const camDecision = dataStore.getPermission(origin, "camera");
-      const micDecision = dataStore.getPermission(origin, "microphone");
+      const camDecision = isPrivate && ctx ? ctx.privatePermissions[origin]?.["camera"] : dataStore.getPermission(origin, "camera");
+      const micDecision = isPrivate && ctx ? ctx.privatePermissions[origin]?.["microphone"] : dataStore.getPermission(origin, "microphone");
       if (camDecision === "allow" && micDecision === "allow") return callback(true);
       if (camDecision === "block" || micDecision === "block") return callback(false);
       
@@ -1916,7 +2009,7 @@ function setupPermissions(): void {
         promptCategory = "camera";
       }
     } else {
-      const decision = dataStore.getPermission(origin, category);
+      const decision = isPrivate && ctx ? ctx.privatePermissions[origin]?.[category] : dataStore.getPermission(origin, category);
       if (decision === "allow") return callback(true);
       if (decision === "block") return callback(false);
     }
@@ -1963,7 +2056,10 @@ function setupPermissions(): void {
     publishAllStates();
   });
 
-  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+  sess.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    const ctx = webContents ? getContextFromWebContents(webContents) : undefined;
+    const isPrivate = ctx?.isPrivate || false;
+
     let category: PermissionCategory | null = null;
     if (permission === "media") {
       if (details.mediaType === "video") category = "camera";
@@ -1988,7 +2084,7 @@ function setupPermissions(): void {
     }
     if (!origin) return false;
     
-    const decision = dataStore.getPermission(origin, category);
+    const decision = isPrivate && ctx ? ctx.privatePermissions[origin]?.[category] : dataStore.getPermission(origin, category);
     return decision === "allow";
   });
 }

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type IconName = "back" | "forward" | "reload" | "home" | "plus" | "close" | "search" | "globe" | "star" | "library" | "history" | "download" | "trash" | "folder" | "open" | "pause" | "play" | "lock" | "lock-open" | "edit" | "settings" | "camera" | "microphone" | "bell" | "map-pin" | "volume-up" | "volume-off" | "chevron-down" | "chevron-right" | "image";
+export type IconName = "back" | "forward" | "reload" | "home" | "plus" | "close" | "search" | "globe" | "star" | "library" | "history" | "download" | "trash" | "folder" | "open" | "pause" | "play" | "lock" | "lock-open" | "edit" | "settings" | "camera" | "microphone" | "bell" | "map-pin" | "volume-up" | "volume-off" | "chevron-down" | "chevron-right" | "image" | "eye-off";
 
 const paths: Record<IconName, ReactNode> = {
   back: <path d="m15 18-6-6 6-6" />,
@@ -15,6 +15,7 @@ const paths: Record<IconName, ReactNode> = {
   globe: <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm-8-9h16M12 3c2.2 2.46 3.3 5.46 3.3 9S14.2 18.54 12 21c-2.2-2.46-3.3-5.46-3.3-9S9.8 5.46 12 3Z" />,
   star: <path d="m12 3 2.78 5.63 6.22.9-4.5 4.39 1.06 6.2L12 17.2l-5.56 2.92 1.06-6.2L3 9.53l6.22-.9Z" />,
   library: <path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H5.5A1.5 1.5 0 0 1 4 19.5Zm0-1.5v16.5M8 7h8M8 11h8" />,
+  "eye-off": <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22" />,
   edit: <path d="m16.5 3.5 4 4L7 21H3v-4L16.5 3.5ZM14.5 5.5l4 4" />,
   history: <path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5m4-4v7l4 2" />,
   download: <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 20h14" />,

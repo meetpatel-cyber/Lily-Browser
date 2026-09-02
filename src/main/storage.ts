@@ -422,15 +422,17 @@ export class BrowserDataStore {
     return importedCount;
   }
 
-  toggleBookmark(url: string, title: string): boolean {
+  toggleBookmark(url: string, title: string, isPrivateOrigin?: boolean): boolean {
     const existingIndex = this.data.bookmarks.findIndex((bookmark) => bookmark.url === url);
     if (existingIndex >= 0) {
       this.data.bookmarks.splice(existingIndex, 1);
       this.persist();
       return false;
     }
-    this.data.bookmarks.unshift({ id: randomUUID(), url, title: readText(title, url), createdAt: Date.now() });
-    this.data.bookmarks = this.data.bookmarks.slice(0, MAX_BOOKMARKS);
+    this.data.bookmarks.unshift({ id: randomUUID(), url, title: readText(title, url), createdAt: Date.now(), isPrivateOrigin });
+    if (this.data.bookmarks.length > MAX_BOOKMARKS) {
+      this.data.bookmarks = this.data.bookmarks.slice(0, MAX_BOOKMARKS);
+    }
     this.persist();
     return true;
   }

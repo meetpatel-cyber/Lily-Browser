@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("lilyBrowser", {
   importBookmarks: () => ipcRenderer.invoke("browser:import-bookmarks"),
   exportBookmarks: () => ipcRenderer.invoke("browser:export-bookmarks"),
   clearHistory: (): Promise<void> => ipcRenderer.invoke("browser:clear-history"),
+  togglePrivateHistory: (enabled: boolean): Promise<void> => ipcRenderer.invoke("browser:toggle-private-history", enabled),
   clearBrowsingData: (options: ClearBrowsingDataOptions) => ipcRenderer.invoke("browser:clear-browsing-data", options),
   resolvePermission: (reqId: string, decision: "allow" | "block" | "dismiss") => ipcRenderer.invoke("browser:resolve-permission", reqId, decision),
   removePermission: (origin: string, category: string) => ipcRenderer.invoke("browser:remove-permission", origin, category),

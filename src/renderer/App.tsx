@@ -240,9 +240,12 @@ export default function App() {
           bookmarkFolders={browserState.bookmarkFolders}
           history={browserState.history}
           downloads={browserState.downloads}
+          isPrivateWindow={browserState.isPrivateWindow}
+          privateHistoryEnabled={browserState.privateHistoryEnabled}
           onSectionChange={setLibrarySection}
           onClose={closeLibrary}
           onOpenUrl={openLibraryUrl}
+          onTogglePrivateHistory={(enabled) => void window.lilyBrowser.togglePrivateHistory(enabled)}
           onRemoveBookmark={(bookmarkId) => void window.lilyBrowser.removeBookmark(bookmarkId)}
           onUpdateBookmark={(bookmarkId, url, title, folderId) => void window.lilyBrowser.updateBookmark(bookmarkId, url, title, folderId)}
           onCreateBookmarkFolder={(name) => void window.lilyBrowser.createBookmarkFolder(name)}

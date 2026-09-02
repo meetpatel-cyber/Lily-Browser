@@ -11,9 +11,12 @@ interface LibraryPanelProps {
   bookmarkFolders: BookmarkFolder[];
   history: HistoryEntry[];
   downloads: DownloadRecord[];
+  isPrivateWindow?: boolean;
+  privateHistoryEnabled?: boolean;
   onSectionChange: (section: LibrarySection) => void;
   onClose: () => void;
   onOpenUrl: (url: string) => void;
+  onTogglePrivateHistory?: (enabled: boolean) => void;
   onRemoveBookmark: (bookmarkId: string) => void;
   onUpdateBookmark: (bookmarkId: string, url: string, title: string, folderId?: string) => void;
   onCreateBookmarkFolder: (name: string) => void;
@@ -166,7 +169,7 @@ function BookmarkList({ bookmarks, bookmarkFolders, onOpenUrl, onRemoveBookmark,
                 <>
                   <button className="library-entry__open" type="button" onClick={() => onOpenUrl(bookmark.url)} title={bookmark.url}>
                     <FaviconIcon fallback="star" filled  url={bookmark.url} />
-                    <span><strong>{bookmark.title}</strong><small>{bookmark.url}</small></span>
+                    <span><strong>{bookmark.title}{bookmark.isPrivateOrigin && <span style={{ marginLeft: "6px", opacity: 0.7, display: "inline-flex", verticalAlign: "-2px" }}><Icon name="eye-off" size={14} /></span>}</strong><small>{bookmark.url}</small></span>
                   </button>
                   <button className="library-entry__action" type="button" title="Edit bookmark" onClick={() => handleEditClick(bookmark)}><Icon name="edit" size={15} /></button>
                   <button className="library-entry__action" type="button" title="Delete bookmark" onClick={() => onRemoveBookmark(bookmark.id)}><Icon name="trash" size={16} /></button>
@@ -228,7 +231,7 @@ function BookmarkList({ bookmarks, bookmarkFolders, onOpenUrl, onRemoveBookmark,
                               <>
                                 <button className="library-entry__open" type="button" onClick={() => onOpenUrl(bookmark.url)} title={bookmark.url}>
                                   <FaviconIcon url={bookmark.url} fallback="star" filled />
-                                  <span><strong>{bookmark.title}</strong><small>{bookmark.url}</small></span>
+                                  <span><strong>{bookmark.title}{bookmark.isPrivateOrigin && <span style={{ marginLeft: "6px", opacity: 0.7, display: "inline-flex", verticalAlign: "-2px" }}><Icon name="eye-off" size={14} /></span>}</strong><small>{bookmark.url}</small></span>
                                 </button>
                                 <button className="library-entry__action" type="button" title="Edit bookmark" onClick={() => handleEditClick(bookmark)}><Icon name="edit" size={15} /></button>
                                 <button className="library-entry__action" type="button" title="Delete bookmark" onClick={() => onRemoveBookmark(bookmark.id)}><Icon name="trash" size={16} /></button>
@@ -263,8 +266,8 @@ function BookmarkList({ bookmarks, bookmarkFolders, onOpenUrl, onRemoveBookmark,
                   ) : (
                     <>
                       <button className="library-entry__open" type="button" onClick={() => onOpenUrl(bookmark.url)} title={bookmark.url}>
-                        <FaviconIcon fallback="star" filled  url={bookmark.url} />
-                        <span><strong>{bookmark.title}</strong><small>{bookmark.url}</small></span>
+                        <FaviconIcon url={bookmark.url} fallback="star" filled />
+                        <span><strong>{bookmark.title}{bookmark.isPrivateOrigin && <span style={{ marginLeft: "6px", opacity: 0.7, display: "inline-flex", verticalAlign: "-2px" }}><Icon name="eye-off" size={14} /></span>}</strong><small>{bookmark.url}</small></span>
                       </button>
                       <button className="library-entry__action" type="button" title="Edit bookmark" onClick={() => handleEditClick(bookmark)}><Icon name="edit" size={15} /></button>
                       <button className="library-entry__action" type="button" title="Delete bookmark" onClick={() => onRemoveBookmark(bookmark.id)}><Icon name="trash" size={16} /></button>
@@ -533,7 +536,7 @@ function DownloadList({ downloads, onOpenDownload, onRevealDownload, onPauseDown
   );
 }
 
-export function LibraryPanel({ section, bookmarks, bookmarkFolders, history, downloads, onSectionChange, onClose, onOpenUrl, onRemoveBookmark, onUpdateBookmark, onCreateBookmarkFolder, onRenameBookmarkFolder, onDeleteBookmarkFolder, onRemoveHistory, onClearHistory, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload, onRemoveDownload, onRetryDownload, onClearCompletedDownloads }: LibraryPanelProps) {
+export function LibraryPanel({ section, bookmarks, bookmarkFolders, history, downloads, isPrivateWindow, privateHistoryEnabled, onSectionChange, onClose, onOpenUrl, onTogglePrivateHistory, onRemoveBookmark, onUpdateBookmark, onCreateBookmarkFolder, onRenameBookmarkFolder, onDeleteBookmarkFolder, onRemoveHistory, onClearHistory, onOpenDownload, onRevealDownload, onPauseDownload, onResumeDownload, onCancelDownload, onRemoveDownload, onRetryDownload, onClearCompletedDownloads }: LibraryPanelProps) {
   const hasCompletedDownloads = downloads.some(d => d.status === "completed");
 
   return (
@@ -554,7 +557,21 @@ export function LibraryPanel({ section, bookmarks, bookmarkFolders, history, dow
               <button className="library-clear" type="button" onClick={() => window.lilyBrowser.exportBookmarks()}>Export</button>
             </div>
           )}
-          {section === "history" && history.length > 0 && <button className="library-clear" type="button" onClick={onClearHistory}>Clear history</button>}
+          {section === "history" && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {isPrivateWindow && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', userSelect: 'none', color: 'var(--fg-base)' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={!!privateHistoryEnabled} 
+                    onChange={(e) => onTogglePrivateHistory?.(e.target.checked)} 
+                  />
+                  Record private history
+                </label>
+              )}
+              {history.length > 0 && <button className="library-clear" type="button" onClick={onClearHistory}>Clear history</button>}
+            </div>
+          )}
           {section === "downloads" && hasCompletedDownloads && <button className="library-clear" type="button" onClick={onClearCompletedDownloads}>Clear completed</button>}
         </div>
         {section === "bookmarks" && <BookmarkList bookmarks={bookmarks} bookmarkFolders={bookmarkFolders} onOpenUrl={onOpenUrl} onRemoveBookmark={onRemoveBookmark} onUpdateBookmark={onUpdateBookmark} onCreateBookmarkFolder={onCreateBookmarkFolder} onRenameBookmarkFolder={onRenameBookmarkFolder} onDeleteBookmarkFolder={onDeleteBookmarkFolder} />}
