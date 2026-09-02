@@ -1,4 +1,4 @@
-export type BrowserCommand =
+export type BrowserCommand = | 'new-window' | 'new-private-window'
   | "new-tab"
   | "close-tab"
   | "back"

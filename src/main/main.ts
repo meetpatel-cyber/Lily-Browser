@@ -24,19 +24,29 @@ interface TabRecord {
 
 const MAX_URL_LENGTH = 8_192;
 const HISTORY_DEDUPLICATION_WINDOW = 15_000;
-const validCommands = new Set<BrowserCommand>(["new-tab", "close-tab", "back", "forward", "reload", "home", "focus-address", "find", "zoom-in", "zoom-out", "zoom-reset"]);
+const validCommands = new Set<BrowserCommand>(["new-tab", "new-window", "new-private-window", "close-tab", "back", "forward", "reload", "home", "focus-address", "find", "zoom-in", "zoom-out", "zoom-reset"]);
 
-let mainWindow: BrowserWindow | null = null;
-let browserBounds: BrowserBounds | null = null;
-let activeTabId = "";
-let libraryVisible = false;
+interface BrowserWindowContext {
+  id: number;
+  window: BrowserWindow;
+  isPrivate: boolean;
+  partitionId?: string;
+  tabs: Map<string, TabRecord>;
+  tabGroups: Map<string, import("../shared/browser").TabGroup>;
+  activeTabId: string;
+  browserBounds: BrowserBounds | null;
+  libraryVisible: boolean;
+  isPrimarySession?: boolean;
+  recentlyClosedTabs: ClosedTabState[];
+}
+
+const browserWindows = new Map<number, BrowserWindowContext>();
+
 let isRestoringSession = false;
 let sessionSaved = false;
 let forceCloseForActiveDownloads = false;
 let dataStore: BrowserDataStore;
 let downloads: StoredDownload[] = [];
-const tabs = new Map<string, TabRecord>();
-const tabGroups = new Map<string, import("../shared/browser").TabGroup>();
 
 const pendingPermissions: PendingPermission[] = [];
 const pendingPermissionCallbacks = new Map<string, Array<(allowed: boolean) => void>>();
@@ -55,7 +65,6 @@ interface ClosedTabState {
   isNewTab: boolean;
   isPinned?: boolean;
 }
-const recentlyClosedTabs: ClosedTabState[] = [];
 const MAX_CLOSED_TABS = 15;
 const isDevelopment = Boolean(process.env.ELECTRON_RENDERER_URL);
 
@@ -66,6 +75,23 @@ interface ActiveDownloadTracker {
 }
 
 const activeDownloads = new Map<string, ActiveDownloadTracker>();
+
+
+function getContextFromWebContents(webContents: Electron.WebContents): BrowserWindowContext | undefined {
+  for (const ctx of browserWindows.values()) {
+    if (ctx.window.webContents === webContents) return ctx;
+    for (const record of ctx.tabs.values()) {
+      if (record.view?.webContents === webContents) return ctx;
+    }
+  }
+  return undefined;
+}
+
+function publishAllStates(): void {
+  for (const ctx of browserWindows.values()) {
+    publishState(ctx);
+  }
+}
 
 function formatSpeed(bytesPerSec: number): string {
   if (bytesPerSec <= 0 || !Number.isFinite(bytesPerSec)) return "";
@@ -97,7 +123,7 @@ function toPublicDownload(download: StoredDownload): DownloadRecord {
   };
 }
 
-function getSnapshot(): BrowserState {
+function getSnapshot(ctx: BrowserWindowContext): BrowserState {
   const prefs = dataStore.getPreferences();
   let effectiveTheme: "light" | "dark" = prefs.appearance === "dark" ? "dark" : "light";
   if (prefs.appearance === "system") {
@@ -105,9 +131,9 @@ function getSnapshot(): BrowserState {
   }
 
   return {
-    tabs: [...tabs.values()].map(({ state }) => ({ ...state })),
-    tabGroups: Object.fromEntries(tabGroups.entries()),
-    activeTabId,
+    tabs: [...ctx.tabs.values()].map(({ state }) => ({ ...state })),
+    tabGroups: Object.fromEntries(ctx.tabGroups.entries()),
+    activeTabId: ctx.activeTabId,
     bookmarks: dataStore.getBookmarks(),
     bookmarkFolders: dataStore.getBookmarkFolders(),
     history: dataStore.getHistory(),
@@ -117,12 +143,13 @@ function getSnapshot(): BrowserState {
     preferences: prefs,
     permissions: dataStore.getPermissions(),
     pendingPermissions: [...pendingPermissions],
-    effectiveTheme
-  };
+    effectiveTheme,
+    isPrivateWindow: ctx.isPrivate
+  } as BrowserState & { isPrivateWindow?: boolean };
 }
 
-function enforceTabOrder(): void {
-  const ordered = [...tabs.values()];
+function enforceTabOrder(ctx: BrowserWindowContext): void {
+  const ordered = [...ctx.tabs.values()];
   const pinned = ordered.filter(t => t.state.isPinned);
   const unpinned = ordered.filter(t => !t.state.isPinned);
   
@@ -142,25 +169,25 @@ function enforceTabOrder(): void {
     }
   }
 
-  tabs.clear();
+  ctx.tabs.clear();
   for (const r of [...pinned, ...groupedUnpinned]) {
-    tabs.set(r.state.id, r);
+    ctx.tabs.set(r.state.id, r);
   }
 
   const activeGroups = new Set(unpinned.map(t => t.state.groupId).filter(Boolean));
-  for (const id of tabGroups.keys()) {
-    if (!activeGroups.has(id)) tabGroups.delete(id);
+  for (const id of ctx.tabGroups.keys()) {
+    if (!activeGroups.has(id)) ctx.tabGroups.delete(id);
   }
 }
 
-function publishState(): void {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("browser:state-changed", getSnapshot());
+function publishState(ctx: BrowserWindowContext): void {
+  if (ctx.window && !ctx.window.isDestroyed()) {
+    ctx.window.webContents.send("browser:state-changed", getSnapshot(ctx));
   }
 }
 
-function activeRecord(): TabRecord | undefined {
-  return tabs.get(activeTabId);
+function activeRecord(ctx: BrowserWindowContext): TabRecord | undefined {
+  return ctx.tabs.get(ctx.activeTabId);
 }
 
 function isAllowedNavigation(url: string): boolean {
@@ -202,24 +229,24 @@ function updateNavigationAvailability(record: TabRecord): void {
   record.state.canGoForward = contents.canGoForward();
 }
 
-function applyViewLayout(): void {
-  const active = activeRecord();
+function applyViewLayout(ctx: BrowserWindowContext): void {
+  const active = activeRecord(ctx);
   if (active?.view && active.state.zoomFactor !== undefined && active.state.zoomFactor !== active.view.webContents.zoomFactor) {
     active.view.webContents.zoomFactor = active.state.zoomFactor;
   }
-  for (const record of tabs.values()) {
-    record.view?.setVisible(record === active && !record.state.isNewTab && !libraryVisible);
+  for (const record of ctx.tabs.values()) {
+    record.view?.setVisible(record === active && !record.state.isNewTab && !ctx.libraryVisible);
   }
-  if (!libraryVisible && active?.view && browserBounds) {
-    active.view.setBounds(browserBounds);
+  if (!ctx.libraryVisible && active?.view && ctx.browserBounds) {
+    active.view.setBounds(ctx.browserBounds);
   }
 }
 
-function syncVisibleState(): void {
-  const record = activeRecord();
+function syncVisibleState(ctx: BrowserWindowContext): void {
+  const record = activeRecord(ctx);
   if (record) updateNavigationAvailability(record);
-  applyViewLayout();
-  publishState();
+  applyViewLayout(ctx);
+  publishAllStates();
 }
 
 function makeNewTab(): TabRecord {
@@ -238,29 +265,36 @@ function makeNewTab(): TabRecord {
 }
 
 function sessionSnapshot(): SessionSnapshot {
+
   const sessionTabs: Array<{ url: string; zoomFactor?: number }> = [];
   let activeIndex = 0;
-  for (const record of tabs.values()) {
-    const url = record.state.isNewTab ? "" : record.state.error || !isAllowedNavigation(record.state.url) ? undefined : record.state.url;
-    if (url === undefined) continue;
-    if (record.state.id === activeTabId) activeIndex = sessionTabs.length;
-    sessionTabs.push({ url, zoomFactor: record.state.zoomFactor });
+  for (const ctx of browserWindows.values()) {
+    if (!ctx.isPrimarySession) continue;
+    for (const record of ctx.tabs.values()) {
+      const url = record.state.isNewTab ? "" : record.state.error || !isAllowedNavigation(record.state.url) ? undefined : record.state.url;
+      if (url === undefined) continue;
+      if (record.state.id === ctx.activeTabId) activeIndex = sessionTabs.length;
+      sessionTabs.push({ url, zoomFactor: record.state.zoomFactor });
+    }
   }
   return { tabs: sessionTabs, activeIndex };
 }
 
 function persistSession(): void {
+
+  const hasPrimary = Array.from(browserWindows.values()).some(c => c.isPrimarySession);
+  if (!hasPrimary) return;
   if (dataStore && !isRestoringSession && !sessionSaved) {
     if (dataStore.getPreferences().startupBehavior === "new-tab") return;
     dataStore.saveSession(sessionSnapshot());
   }
 }
 
-function releaseView(record: TabRecord): void {
+function releaseView(ctx: BrowserWindowContext, record: TabRecord): void {
   if (!record.view) return;
   const view = record.view;
   record.view = undefined;
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.contentView.removeChildView(view);
+  if (ctx.window && !ctx.window.isDestroyed()) ctx.window.contentView.removeChildView(view);
   if (!view.webContents.isDestroyed()) view.webContents.close();
 }
 
@@ -444,7 +478,7 @@ function renderErrorHtml(friendly: FriendlyError, failedUrl: string): string {
 </html>`;
 }
 
-function showNavigationFailure(record: TabRecord, rawMessage: string, errorCode?: number, validatedUrl?: string): void {
+function showNavigationFailure(ctx: BrowserWindowContext, record: TabRecord, rawMessage: string, errorCode?: number, validatedUrl?: string): void {
   if (record.isShowingError) return;
   record.isShowingError = true;
 
@@ -457,8 +491,8 @@ function showNavigationFailure(record: TabRecord, rawMessage: string, errorCode?
   record.state.title = friendly.heading;
   record.lastFailedUrl = failedUrl;
   updateNavigationAvailability(record);
-  persistSession();
-  publishState();
+  if (!ctx.isPrivate) persistSession();
+  publishAllStates();
 
   if (record.view && !record.view.webContents.isDestroyed()) {
     const html = renderErrorHtml(friendly, failedUrl);
@@ -468,46 +502,50 @@ function showNavigationFailure(record: TabRecord, rawMessage: string, errorCode?
   }
 }
 
-function recordHistoryVisit(record: TabRecord): void {
+function recordHistoryVisit(ctx: BrowserWindowContext, record: TabRecord): void {
   if (record.isRestoredNavigation) {
     record.isRestoredNavigation = false;
     return;
   }
   const { url, title, error, isNewTab } = record.state;
   if (isNewTab || error || record.lastFailedUrl === url || !isAllowedNavigation(url)) return;
-  const now = Date.now();
-  const lastVisit = record.lastHistoryVisit;
-  const recentlyVisited = recentHistoryUrls.get(url) ?? 0;
-  if ((lastVisit?.url === url && now - lastVisit.recordedAt < HISTORY_DEDUPLICATION_WINDOW) || now - recentlyVisited < HISTORY_DEDUPLICATION_WINDOW) {
-    return;
+  
+  if (!ctx.isPrivate) {
+    const now = Date.now();
+    const lastVisit = record.lastHistoryVisit;
+    const recentlyVisited = recentHistoryUrls.get(url) ?? 0;
+    if ((lastVisit?.url === url && now - lastVisit.recordedAt < HISTORY_DEDUPLICATION_WINDOW) || now - recentlyVisited < HISTORY_DEDUPLICATION_WINDOW) {
+      return;
+    }
+    const entry = dataStore.recordHistory(url, title || fallbackTitle(url));
+    record.lastHistoryVisit = { id: entry.id, url, recordedAt: now };
+    recentHistoryUrls.set(url, now);
+    if (recentHistoryUrls.size > 200) {
+      const oldest = [...recentHistoryUrls.entries()].sort((a, b) => a[1] - b[1]).slice(0, 50);
+      oldest.forEach(([historyUrl]) => recentHistoryUrls.delete(historyUrl));
+    }
   }
-  const entry = dataStore.recordHistory(url, title || fallbackTitle(url));
-  record.lastHistoryVisit = { id: entry.id, url, recordedAt: now };
-  recentHistoryUrls.set(url, now);
-  if (recentHistoryUrls.size > 200) {
-    const oldest = [...recentHistoryUrls.entries()].sort((a, b) => a[1] - b[1]).slice(0, 50);
-    oldest.forEach(([historyUrl]) => recentHistoryUrls.delete(historyUrl));
-  }
-  publishState();
+  publishAllStates();
 }
 
-function updateHistoryTitle(record: TabRecord): void {
+function updateHistoryTitle(ctx: BrowserWindowContext, record: TabRecord): void {
+  if (ctx.isPrivate) return;
   const lastVisit = record.lastHistoryVisit;
   if (lastVisit?.url === record.state.url) {
     dataStore.updateHistoryTitle(lastVisit.id, record.state.title || fallbackTitle(record.state.url));
   }
 }
 
-function attachBrowserEvents(record: TabRecord, view: WebContentsView): void {
+function attachBrowserEvents(ctx: BrowserWindowContext, record: TabRecord, view: WebContentsView): void {
   const contents = view.webContents;
   contents.setWindowOpenHandler(({ url }) => {
-    if (isAllowedNavigation(url)) createTab(url, true);
+    if (isAllowedNavigation(url)) createTab(ctx, url, true);
     return { action: "deny" };
   });
   contents.on("will-navigate", (event, url) => {
     if (!isAllowedNavigation(url)) {
       event.preventDefault();
-      showNavigationFailure(record, "Lily Browser only opens web addresses over HTTP or HTTPS.", undefined, url);
+      showNavigationFailure(ctx, record, "Lily Browser only opens web addresses over HTTP or HTTPS.", undefined, url);
     }
   });
   contents.on("did-start-navigation", (_event, _url, isInPlace, isMainFrame) => {
@@ -516,7 +554,7 @@ function attachBrowserEvents(record: TabRecord, view: WebContentsView): void {
         contents.stopFindInPage("clearSelection");
         record.state.findState = undefined;
         record.currentFindRequestId = undefined;
-        publishState();
+        publishAllStates();
       }
     }
   });
@@ -525,17 +563,17 @@ function attachBrowserEvents(record: TabRecord, view: WebContentsView): void {
     record.state.isLoading = true;
     record.state.favicon = undefined;
     if (record.lastFailedUrl !== record.state.url) record.state.error = undefined;
-    publishState();
+    publishAllStates();
   });
   contents.on("did-stop-loading", () => {
     record.state.isLoading = false;
     updateNavigationAvailability(record);
-    publishState();
+    publishAllStates();
   });
   contents.on("page-favicon-updated", (_event, favicons) => {
     if (Array.isArray(favicons) && favicons.length > 0 && isAllowedFaviconUrl(favicons[0])) {
       record.state.favicon = favicons[0];
-      publishState();
+      publishAllStates();
       
       const isBookmarked = dataStore.getBookmarks().some((b: Bookmark) => {
         try { return new URL(b.url).hostname === new URL(record.state.url).hostname; }
@@ -558,77 +596,82 @@ function attachBrowserEvents(record: TabRecord, view: WebContentsView): void {
     }
     updateNavigationAvailability(record);
     persistSession();
-    publishState();
+    publishAllStates();
   };
   contents.on("did-navigate", updateUrl);
   contents.on("did-navigate-in-page", updateUrl);
   contents.on("page-title-updated", (event, title) => {
     event.preventDefault();
     record.state.title = title.trim() || fallbackTitle(record.state.url);
-    updateHistoryTitle(record);
-    publishState();
+    updateHistoryTitle(ctx, record);
+    publishAllStates();
   });
   contents.on("found-in-page", (_event, result) => {
     if (record.state.findState && record.currentFindRequestId !== undefined && result.requestId >= record.currentFindRequestId) {
       record.state.findState.activeMatchOrdinal = result.activeMatchOrdinal;
       record.state.findState.matches = result.matches;
-      publishState();
+      publishAllStates();
     }
   });
   contents.on("did-finish-load", () => {
-    recordHistoryVisit(record);
+    recordHistoryVisit(ctx, record);
     if (record.state.isAudible !== contents.isCurrentlyAudible()) {
       record.state.isAudible = contents.isCurrentlyAudible();
-      publishState();
+      publishAllStates();
     }
   });
   contents.on("audio-state-changed", (event) => {
     if (contents.isDestroyed()) return;
     record.state.isAudible = event.audible;
-    publishState();
+    publishAllStates();
   });
   contents.on("did-fail-load", (_event, errorCode, errorDescription, validatedUrl, isMainFrame) => {
     if (isMainFrame && errorCode !== -3) { // ERR_ABORTED is -3
       record.isRestoredNavigation = false;
-      showNavigationFailure(record, errorDescription, errorCode, validatedUrl);
+      showNavigationFailure(ctx, record, errorDescription, errorCode, validatedUrl);
     }
   });
-  contents.on("render-process-gone", () => showNavigationFailure(record, "The page process stopped unexpectedly."));
+  contents.on("render-process-gone", () => showNavigationFailure(ctx, record, "The page process stopped unexpectedly."));
   contents.on("before-input-event", (event, input) => {
     const command = commandFromInput(input);
     if (command) {
       event.preventDefault();
-      runBrowserCommand(command);
+      runBrowserCommand(ctx, command);
     }
   });
 }
 
-function ensureView(record: TabRecord): WebContentsView {
+function ensureView(ctx: BrowserWindowContext, record: TabRecord): WebContentsView {
   if (record.view) return record.view;
-  const view = new WebContentsView({
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true }
-  });
+  const webPreferences: Electron.WebPreferences = { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true };
+  if (ctx.partitionId) {
+    webPreferences.session = session.fromPartition(ctx.partitionId);
+  }
+  const view = new WebContentsView({ webPreferences });
   record.view = view;
   if (record.state.zoomFactor !== undefined) {
     view.webContents.zoomFactor = record.state.zoomFactor;
   }
-  mainWindow?.contentView.addChildView(view);
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win && !win.isDestroyed()) {
+    ctx.window.contentView.addChildView(view);
+  }
   view.setVisible(false);
-  attachBrowserEvents(record, view);
+  attachBrowserEvents(ctx, record, view);
   return view;
 }
 
-function navigateTab(tabId: string, url: string, isRestoring = false): void {
-  const record = tabs.get(tabId);
+function navigateTab(ctx: BrowserWindowContext, tabId: string, url: string, isRestoring = false): void {
+  const record = ctx.tabs.get(tabId);
   if (!record || !isAllowedNavigation(url)) return;
-  const view = ensureView(record);
+  const view = ensureView(ctx, record);
   record.lastFailedUrl = undefined;
   record.isShowingError = false;
   record.isRestoredNavigation = isRestoring;
   record.state = { ...record.state, url, title: fallbackTitle(url), favicon: undefined, isNewTab: false, isLoading: true, error: undefined, findState: undefined };
-  if (tabId === activeTabId) applyViewLayout();
+  if (tabId === ctx.activeTabId) applyViewLayout(ctx);
   persistSession();
-  publishState();
+  publishAllStates();
   void view.webContents.loadURL(url).catch(() => {
     // Rejections here are expected when showNavigationFailure loads the data: error
     // page, which aborts the original loadURL. The error is already handled by
@@ -636,50 +679,53 @@ function navigateTab(tabId: string, url: string, isRestoring = false): void {
   });
 }
 
-function createTab(url?: string, activate = true): string {
-  libraryVisible = false;
+function createTab(ctx: BrowserWindowContext, url?: string, activate = true): string {
+  ctx.libraryVisible = false;
   const record = makeNewTab();
-  tabs.set(record.state.id, record);
-  if (activate || !activeTabId) activeTabId = record.state.id;
-  if (url) navigateTab(record.state.id, url);
+  ctx.tabs.set(record.state.id, record);
+  if (activate || !ctx.activeTabId) ctx.activeTabId = record.state.id;
+  if (url) navigateTab(ctx, record.state.id, url);
   else {
     persistSession();
-    syncVisibleState();
-    if (activate) mainWindow?.webContents.focus();
+    syncVisibleState(ctx);
+    if (activate) ctx.window?.webContents.focus();
   }
   return record.state.id;
 }
 
-function selectTab(tabId: string): void {
-  if (!tabs.has(tabId)) return;
-  libraryVisible = false;
-  activeTabId = tabId;
+function selectTab(ctx: BrowserWindowContext, tabId: string): void {
+  if (!ctx.tabs.has(tabId)) return;
+  ctx.libraryVisible = false;
+  ctx.activeTabId = tabId;
   persistSession();
-  syncVisibleState();
-  const record = tabs.get(tabId);
+  syncVisibleState(ctx);
+  const record = ctx.tabs.get(tabId);
   if (record?.view && !record.state.isNewTab) {
     record.view.webContents.focus();
   } else {
-    mainWindow?.webContents.focus();
+    ctx.window?.webContents.focus();
   }
 }
 
-function closeTab(tabId: string): void {
-  const orderedTabs = [...tabs.values()];
+function closeTab(ctx: BrowserWindowContext, tabId: string): void {
+  const orderedTabs = [...ctx.tabs.values()];
   const index = orderedTabs.findIndex((record) => record.state.id === tabId);
-  const record = tabs.get(tabId);
+  const record = ctx.tabs.get(tabId);
   if (!record || index === -1) return;
-  recentlyClosedTabs.push({
-    url: record.state.url,
-    title: record.state.title,
-    favicon: record.state.favicon,
-    zoomFactor: record.state.zoomFactor,
-    originalIndex: index,
-    isNewTab: record.state.isNewTab,
-    isPinned: record.state.isPinned
-  });
-  if (recentlyClosedTabs.length > MAX_CLOSED_TABS) {
-    recentlyClosedTabs.shift();
+  
+  if (!ctx.isPrivate) {
+    ctx.recentlyClosedTabs.push({
+      url: record.state.url,
+      title: record.state.title,
+      favicon: record.state.favicon,
+      zoomFactor: record.state.zoomFactor,
+      originalIndex: index,
+      isNewTab: record.state.isNewTab,
+      isPinned: record.state.isPinned
+    });
+    if (ctx.recentlyClosedTabs.length > MAX_CLOSED_TABS) {
+      ctx.recentlyClosedTabs.shift();
+    }
   }
 
   const tabPending = pendingPermissions.filter(p => p.tabId === tabId);
@@ -700,28 +746,28 @@ function closeTab(tabId: string): void {
     }
   }
   
-  releaseView(record);
-  tabs.delete(tabId);
-  enforceTabOrder();
+  releaseView(ctx, record);
+  ctx.tabs.delete(tabId);
+  enforceTabOrder(ctx);
   
-  if (tabs.size === 0) {
-    activeTabId = "";
-    createTab();
+  if (ctx.tabs.size === 0) {
+    ctx.activeTabId = "";
+    createTab(ctx);
     return;
   }
-  if (activeTabId === tabId) activeTabId = (orderedTabs[index - 1] ?? orderedTabs[index + 1]).state.id;
+  if (ctx.activeTabId === tabId) ctx.activeTabId = (orderedTabs[index - 1] ?? orderedTabs[index + 1]).state.id;
   persistSession();
-  syncVisibleState();
-  const active = activeRecord();
+  syncVisibleState(ctx);
+  const active = activeRecord(ctx);
   if (active?.view && !active.state.isNewTab) {
     active.view.webContents.focus();
   } else {
-    mainWindow?.webContents.focus();
+    ctx.window?.webContents.focus();
   }
 }
 
-function duplicateTab(tabId: string): void {
-  const original = tabs.get(tabId);
+function duplicateTab(ctx: BrowserWindowContext, tabId: string): void {
+  const original = ctx.tabs.get(tabId);
   if (!original || original.state.isNewTab || !original.state.url) return;
   
   const newRecord = makeNewTab();
@@ -730,27 +776,27 @@ function duplicateTab(tabId: string): void {
     newRecord.state.zoomFactor = original.state.zoomFactor;
   }
   
-  const ordered = [...tabs.values()];
+  const ordered = [...ctx.tabs.values()];
   const targetIndex = ordered.findIndex(r => r.state.id === tabId);
   if (targetIndex !== -1) {
     ordered.splice(targetIndex + 1, 0, newRecord);
-    tabs.clear();
+    ctx.tabs.clear();
     for (const r of ordered) {
-      tabs.set(r.state.id, r);
+      ctx.tabs.set(r.state.id, r);
     }
   } else {
-    tabs.set(newRecord.state.id, newRecord);
+    ctx.tabs.set(newRecord.state.id, newRecord);
   }
   
-  enforceTabOrder();
+  enforceTabOrder(ctx);
   
-  activeTabId = newRecord.state.id;
-  navigateTab(newRecord.state.id, original.state.url);
+  ctx.activeTabId = newRecord.state.id;
+  navigateTab(ctx, newRecord.state.id, original.state.url);
 }
 
-function reopenTab(): void {
-  if (recentlyClosedTabs.length === 0) return;
-  const state = recentlyClosedTabs.pop()!;
+function reopenTab(ctx: BrowserWindowContext): void {
+  if (ctx.recentlyClosedTabs.length === 0) return;
+  const state = ctx.recentlyClosedTabs.pop()!;
   
   const record = makeNewTab();
   record.state.isPinned = state.isPinned;
@@ -758,90 +804,90 @@ function reopenTab(): void {
     record.state.zoomFactor = state.zoomFactor;
   }
   
-  const ordered = [...tabs.values()];
+  const ordered = [...ctx.tabs.values()];
   const targetIndex = Math.min(Math.max(0, state.originalIndex), ordered.length);
   ordered.splice(targetIndex, 0, record);
   
-  tabs.clear();
+  ctx.tabs.clear();
   for (const r of ordered) {
-    tabs.set(r.state.id, r);
+    ctx.tabs.set(r.state.id, r);
   }
   
-  enforceTabOrder();
+  enforceTabOrder(ctx);
   
-  activeTabId = record.state.id;
+  ctx.activeTabId = record.state.id;
   
   if (state.isNewTab && !state.url) {
     persistSession();
-    syncVisibleState();
-    mainWindow?.webContents.focus();
+    syncVisibleState(ctx);
+    ctx.window?.webContents.focus();
   } else {
-    navigateTab(record.state.id, state.url);
+    navigateTab(ctx, record.state.id, state.url);
   }
 }
 
-function togglePinTab(tabId: string): void {
-  const original = tabs.get(tabId);
+function togglePinTab(ctx: BrowserWindowContext, tabId: string): void {
+  const original = ctx.tabs.get(tabId);
   if (!original) return;
   original.state.isPinned = !original.state.isPinned;
-  enforceTabOrder();
+  enforceTabOrder(ctx);
   persistSession();
-  syncVisibleState();
-  publishState();
+  syncVisibleState(ctx);
+  publishAllStates();
 }
 
-function setTabGroup(tabId: string, groupId: string | undefined): void {
-  const record = tabs.get(tabId);
+function setTabGroup(ctx: BrowserWindowContext, tabId: string, groupId: string | undefined): void {
+  const record = ctx.tabs.get(tabId);
   if (!record || record.state.isPinned) return;
   record.state.groupId = groupId;
-  enforceTabOrder();
+  enforceTabOrder(ctx);
   persistSession();
-  publishState();
+  publishAllStates();
 }
 
-function createTabGroup(tabId: string): void {
-  const record = tabs.get(tabId);
+function createTabGroup(ctx: BrowserWindowContext, tabId: string): void {
+  const record = ctx.tabs.get(tabId);
   if (!record || record.state.isPinned) return;
   const groupId = randomUUID();
-  tabGroups.set(groupId, { id: groupId, name: "", color: "grey" });
-  setTabGroup(tabId, groupId);
+  ctx.tabGroups.set(groupId, { id: groupId, name: "", color: "grey" });
+  setTabGroup(ctx, tabId, groupId);
 }
 
-function updateTabGroup(groupId: string, updates: Partial<import("../shared/browser").TabGroup>): void {
-  const group = tabGroups.get(groupId);
+function updateTabGroup(ctx: BrowserWindowContext, groupId: string, updates: Partial<import("../shared/browser").TabGroup>): void {
+  const group = ctx.tabGroups.get(groupId);
   if (!group) return;
   Object.assign(group, updates);
   persistSession();
-  publishState();
+  publishAllStates();
 }
 
-function toggleMuteTab(tabId: string): void {
-  const record = tabs.get(tabId);
+function toggleMuteTab(ctx: BrowserWindowContext, tabId: string): void {
+  const record = ctx.tabs.get(tabId);
   if (!record || !record.view) return;
   const isMuted = record.view.webContents.isAudioMuted();
   record.view.webContents.setAudioMuted(!isMuted);
   record.state.isMuted = !isMuted;
-  publishState();
+  publishAllStates();
 }
 
-function openHome(tabId: string): void {
-  const record = tabs.get(tabId);
+function openHome(ctx: BrowserWindowContext, tabId: string): void {
+  const record = ctx.tabs.get(tabId);
   if (!record) return;
-  releaseView(record);
+  releaseView(ctx, record);
   record.state = { ...record.state, title: "New Tab", url: "", favicon: undefined, isNewTab: true, isLoading: false, canGoBack: false, canGoForward: false, error: undefined };
   persistSession();
-  if (tabId === activeTabId) {
-    syncVisibleState();
-    mainWindow?.webContents.focus();
+  if (tabId === ctx.activeTabId) {
+    syncVisibleState(ctx);
+    ctx.window?.webContents.focus();
   }
-  else publishState();
+  else publishAllStates();
 }
 
-function toggleBookmark(tabId: string): void {
-  const record = tabs.get(tabId);
+function toggleBookmark(ctx: BrowserWindowContext, tabId: string): void {
+  const record = ctx.tabs.get(tabId);
   if (!record || record.state.isNewTab || record.state.isLoading || record.state.error || !isAllowedNavigation(record.state.url)) return;
   const added = dataStore.toggleBookmark(record.state.url, record.state.title || fallbackTitle(record.state.url));
-  publishState();
+  publishAllStates();
   if (added && record.state.favicon) {
     try { fetchAndCacheFavicon(new URL(record.state.url).hostname, record.state.favicon); }
     catch { /* ignore */ }
@@ -850,18 +896,24 @@ function toggleBookmark(tabId: string): void {
 
 const ZOOM_FACTORS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0];
 
-function runBrowserCommand(command: BrowserCommand): void {
-  const active = activeRecord();
+function runBrowserCommand(ctx: BrowserWindowContext, command: BrowserCommand): void {
+  const active = activeRecord(ctx);
   switch (command) {
-    case "new-tab": createTab(); break;
-    case "close-tab": if (active) closeTab(active.state.id); break;
-    case "reopen-tab": reopenTab(); break;
+          case "new-window":
+        createWindow(false);
+        break;
+      case "new-private-window":
+        createWindow(true);
+        break;
+      case "new-tab": createTab(ctx); break;
+    case "close-tab": if (active) closeTab(ctx, active.state.id); break;
+    case "reopen-tab": reopenTab(ctx); break;
     case "back": if (active?.view?.webContents.canGoBack()) active.view.webContents.goBack(); break;
     case "forward": if (active?.view?.webContents.canGoForward()) active.view.webContents.goForward(); break;
     case "reload":
       if (active?.view) {
         if (active.isShowingError && active.lastFailedUrl) {
-          navigateTab(active.state.id, active.lastFailedUrl);
+          navigateTab(ctx, active.state.id, active.lastFailedUrl);
         } else {
           active.view.webContents.reload();
         }
@@ -869,22 +921,22 @@ function runBrowserCommand(command: BrowserCommand): void {
       break;
     case "next-tab":
     case "previous-tab": {
-      const orderedTabs = [...tabs.values()];
+      const orderedTabs = [...ctx.tabs.values()];
       if (orderedTabs.length > 1) {
-        const index = orderedTabs.findIndex((record) => record.state.id === activeTabId);
+        const index = orderedTabs.findIndex((record) => record.state.id === ctx.activeTabId);
         if (index !== -1) {
           const newIndex = command === "next-tab" 
             ? (index + 1) % orderedTabs.length 
             : (index - 1 + orderedTabs.length) % orderedTabs.length;
-          selectTab(orderedTabs[newIndex].state.id);
+          selectTab(ctx, orderedTabs[newIndex].state.id);
         }
       }
       break;
     }
-    case "home": if (active) openHome(active.state.id); break;
-    case "focus-address": mainWindow?.webContents.send("browser:command", command); break;
-    case "find": mainWindow?.webContents.send("browser:command", command); break;
-    case "tab-search": mainWindow?.webContents.send("browser:command", command); break;
+    case "home": if (active) openHome(ctx, active.state.id); break;
+    case "focus-address": ctx.window?.webContents.send("browser:command", command); break;
+    case "find": ctx.window?.webContents.send("browser:command", command); break;
+    case "tab-search": ctx.window?.webContents.send("browser:command", command); break;
     case "zoom-in":
     case "zoom-out":
     case "zoom-reset":
@@ -901,7 +953,7 @@ function runBrowserCommand(command: BrowserCommand): void {
         }
         active.view.webContents.zoomFactor = current;
         active.state.zoomFactor = current;
-        publishState();
+        publishAllStates();
         persistSession();
       }
       break;
@@ -914,6 +966,7 @@ function commandFromInput(input: Electron.Input): BrowserCommand | undefined {
   if (commandModifier) {
     if (input.key === "Tab") return input.shift ? "previous-tab" : "next-tab";
     if (input.key.toLowerCase() === "t") return input.shift ? "reopen-tab" : "new-tab";
+      if (input.key.toLowerCase() === "n") return input.shift ? "new-private-window" : "new-window";
     if (input.key.toLowerCase() === "a" && input.shift) return "tab-search";
     if (input.key.toLowerCase() === "w") return "close-tab";
     if (input.key.toLowerCase() === "l") return "focus-address";
@@ -980,7 +1033,7 @@ function registerDownloadHandler(): void {
 
     downloads.unshift(download);
     dataStore.saveDownloads(downloads);
-    publishState();
+    publishAllStates();
 
     item.on("updated", (_updateEvent, state) => {
       const tracker = activeDownloads.get(downloadId);
@@ -1009,7 +1062,7 @@ function registerDownloadHandler(): void {
       } else if (download.error && !download.isPaused) {
         download.error = undefined;
       }
-      publishState();
+      publishAllStates();
     });
 
     item.once("done", (_doneEvent, state) => {
@@ -1044,7 +1097,7 @@ function registerDownloadHandler(): void {
         }
       }
       dataStore.saveDownloads(downloads);
-      publishState();
+      publishAllStates();
     });
   });
 }
@@ -1063,7 +1116,7 @@ function pauseDownload(downloadId: string): void {
       download.isPaused = true;
       download.canResume = tracker.item.canResume();
       download.speed = undefined;
-      publishState();
+      publishAllStates();
     }
   }
 }
@@ -1078,7 +1131,7 @@ function resumeDownload(downloadId: string): void {
       download.canResume = true;
       tracker.lastBytes = tracker.item.getReceivedBytes();
       tracker.lastTime = Date.now();
-      publishState();
+      publishAllStates();
     }
   }
 }
@@ -1099,7 +1152,7 @@ function removeDownload(downloadId: string): void {
   
   downloads.splice(index, 1);
   dataStore.saveDownloads(downloads);
-  publishState();
+  publishAllStates();
 }
 
 function clearCompletedDownloads(): void {
@@ -1108,22 +1161,23 @@ function clearCompletedDownloads(): void {
   
   if (downloads.length !== initialLength) {
     dataStore.saveDownloads(downloads);
-    publishState();
+    publishAllStates();
   }
 }
 
 function retryDownload(downloadId: string): void {
   const download = downloads.find((d) => d.id === downloadId);
   if (!download || download.status !== "failed" || !download.url) return;
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.downloadURL(download.url);
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win && !win.isDestroyed()) {
+    win.webContents.downloadURL(download.url);
   }
 }
 
 function updateDownloadError(download: StoredDownload, message: string): void {
   download.error = message;
   dataStore.saveDownloads(downloads);
-  publishState();
+  publishAllStates();
 }
 
 function openCompletedDownload(downloadId: string): void {
@@ -1144,11 +1198,11 @@ function revealCompletedDownload(downloadId: string): void {
   shell.showItemInFolder(download.savePath);
 }
 
-function restoreSession(): void {
+function restoreSession(ctx: BrowserWindowContext): void {
   const prefs = dataStore.getPreferences();
   const restored = dataStore.getSession();
   if (prefs.startupBehavior === "new-tab" || restored.tabs.length === 0) {
-    createTab();
+    createTab(ctx);
     return;
   }
   isRestoringSession = true;
@@ -1156,66 +1210,102 @@ function restoreSession(): void {
     const records = restored.tabs.map((sessionTab) => {
       const record = makeNewTab();
       if (sessionTab.zoomFactor) record.state.zoomFactor = sessionTab.zoomFactor;
-      tabs.set(record.state.id, record);
+      ctx.tabs.set(record.state.id, record);
       return { record, url: sessionTab.url };
     });
-    activeTabId = records[Math.min(restored.activeIndex, records.length - 1)].record.state.id;
+    ctx.activeTabId = records[Math.min(restored.activeIndex, records.length - 1)].record.state.id;
     for (const { record, url } of records) {
-      if (url) navigateTab(record.state.id, url, true);
+      if (url) navigateTab(ctx, record.state.id, url, true);
     }
   } finally {
     isRestoringSession = false;
   }
   persistSession();
-  syncVisibleState();
+  syncVisibleState(ctx);
 }
 
 function buildApplicationMenu(): void {
+  const getActiveCtx = () => {
+    const win = BrowserWindow.getFocusedWindow();
+    if (!win) return undefined;
+    for (const ctx of browserWindows.values()) {
+      if (ctx.window === win) return ctx;
+    }
+    return undefined;
+  };
+
   const template: MenuItemConstructorOptions[] = [
     { label: "Lily Browser", submenu: [{ role: "about" }, { type: "separator" }, { role: "quit", label: "Quit Lily Browser" }] },
     { label: "File", submenu: [
-      { label: "New Tab", accelerator: "CmdOrCtrl+T", click: () => runBrowserCommand("new-tab") },
-      { label: "Close Tab", accelerator: "CmdOrCtrl+W", click: () => runBrowserCommand("close-tab") }
+      { label: "New Tab", accelerator: "CmdOrCtrl+T", click: () => runBrowserCommand(getActiveCtx()!, "new-tab") },
+      { label: "Close Tab", accelerator: "CmdOrCtrl+W", click: () => runBrowserCommand(getActiveCtx()!, "close-tab") }
     ] },
     { label: "Navigate", submenu: [
-      { label: "Back", accelerator: "Alt+Left", click: () => runBrowserCommand("back") },
-      { label: "Forward", accelerator: "Alt+Right", click: () => runBrowserCommand("forward") },
-      { label: "Reload", accelerator: "CmdOrCtrl+R", click: () => runBrowserCommand("reload") },
+      { label: "Back", accelerator: "Alt+Left", click: () => runBrowserCommand(getActiveCtx()!, "back") },
+      { label: "Forward", accelerator: "Alt+Right", click: () => runBrowserCommand(getActiveCtx()!, "forward") },
+      { label: "Reload", accelerator: "CmdOrCtrl+R", click: () => runBrowserCommand(getActiveCtx()!, "reload") },
       { type: "separator" },
-      { label: "Home", accelerator: "Alt+Home", click: () => runBrowserCommand("home") }
+      { label: "Home", accelerator: "Alt+Home", click: () => runBrowserCommand(getActiveCtx()!, "home") }
     ] },
     { label: "View", submenu: [
-      { label: "Focus Address Bar", accelerator: "CmdOrCtrl+L", click: () => runBrowserCommand("focus-address") },
-      { label: "Search Tabs", accelerator: "CmdOrCtrl+Shift+A", click: () => runBrowserCommand("tab-search") }
+      { label: "Focus Address Bar", accelerator: "CmdOrCtrl+L", click: () => runBrowserCommand(getActiveCtx()!, "focus-address") },
+      { label: "Search Tabs", accelerator: "CmdOrCtrl+Shift+A", click: () => runBrowserCommand(getActiveCtx()!, "tab-search") }
     ] }
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-function createWindow(): void {
-  sessionSaved = false;
-  forceCloseForActiveDownloads = false;
+let windowIdCounter = 1;
+
+function createWindow(isPrivate = false): void {
+  if (!isPrivate) {
+    sessionSaved = false;
+    forceCloseForActiveDownloads = false;
+  }
   
   nativeTheme.themeSource = dataStore.getPreferences().appearance;
   
-  mainWindow = new BrowserWindow({
+  const windowId = windowIdCounter++;
+  const partitionId = isPrivate ? `private-${randomUUID()}` : undefined;
+
+  const win = new BrowserWindow({
     width: 1240, height: 820, minWidth: 760, minHeight: 540, title: "Lily Browser", backgroundColor: nativeTheme.shouldUseDarkColors ? "#1e1e20" : "#f7f7f8", show: false,
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
-  mainWindow.webContents.on("before-input-event", (event, input) => {
+
+  const isFirstNormal = Array.from(browserWindows.values()).filter(c => !c.isPrivate).length === 0;
+  const ctx: BrowserWindowContext = {
+    isPrimarySession: isFirstNormal && !isPrivate,
+    id: windowId,
+    window: win,
+    isPrivate,
+    partitionId,
+    tabs: new Map(),
+    tabGroups: new Map(),
+    activeTabId: "",
+    browserBounds: null,
+    libraryVisible: false,
+    recentlyClosedTabs: []
+  };
+
+  browserWindows.set(windowId, ctx);
+
+  win.webContents.on("before-input-event", (event, input) => {
     const command = commandFromInput(input);
     if (command) {
       event.preventDefault();
-      runBrowserCommand(command);
+      runBrowserCommand(ctx, command);
     }
   });
-  mainWindow.once("ready-to-show", () => mainWindow?.show());
-  mainWindow.on("close", (event) => {
-    if (!forceCloseForActiveDownloads) {
+  
+  win.once("ready-to-show", () => win.show());
+  
+  win.on("close", (event) => {
+    if (!isPrivate && !forceCloseForActiveDownloads) {
       const activeCount = downloads.filter((item) => item.status === "in-progress").length;
       if (activeCount > 0) {
         event.preventDefault();
-        const choice = dialog.showMessageBoxSync(mainWindow!, {
+        const choice = dialog.showMessageBoxSync(win, {
           type: "warning",
           title: "Active Downloads",
           message: activeCount === 1 ? "1 download is currently in progress." : `${activeCount} downloads are currently in progress.`,
@@ -1228,26 +1318,37 @@ function createWindow(): void {
 
         if (choice === 1) {
           forceCloseForActiveDownloads = true;
-          persistSession();
-          sessionSaved = true;
-          mainWindow?.close();
+          if (!isPrivate) { persistSession(); sessionSaved = true; }
+          win.close();
         }
         return;
       }
     }
-    persistSession();
-    sessionSaved = true;
+    if (!isPrivate) {
+      persistSession();
+      sessionSaved = true;
+    }
   });
-  mainWindow.on("closed", () => {
-    mainWindow = null;
-    browserBounds = null;
-    libraryVisible = false;
-    tabs.clear();
-    activeTabId = "";
+  
+  win.on("closed", () => {
+    for (const record of ctx.tabs.values()) {
+      releaseView(ctx, record);
+    }
+    browserWindows.delete(windowId);
   });
-  if (isDevelopment) void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL!);
-  else void mainWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
-  restoreSession();
+
+  if (isDevelopment) void win.loadURL(process.env.ELECTRON_RENDERER_URL!);
+  else void win.loadFile(path.join(__dirname, "../../dist/index.html"));
+  
+  if (!isPrivate) {
+    if (ctx.isPrimarySession) {
+      restoreSession(ctx);
+    } else {
+      createTab(ctx);
+    }
+  } else {
+    createTab(ctx);
+  }
 }
 
 function isIdentifier(value: unknown): value is string {
@@ -1255,49 +1356,72 @@ function isIdentifier(value: unknown): value is string {
 }
 
 function registerIpcHandlers(): void {
-  ipcMain.handle("browser:get-state", () => getSnapshot());
-  ipcMain.handle("browser:create-tab", () => createTab());
-  ipcMain.handle("browser:select-tab", (_event, tabId: unknown) => { if (isIdentifier(tabId)) selectTab(tabId); });
-  ipcMain.handle("browser:close-tab", (_event, tabId: unknown) => { if (isIdentifier(tabId)) closeTab(tabId); });
-  ipcMain.handle("browser:navigate", (_event, tabId: unknown, url: unknown) => {
-    if (isIdentifier(tabId) && typeof url === "string" && isAllowedNavigation(url)) navigateTab(tabId, url);
+  
+    ipcMain.handle("browser:new-window", () => {
+      createWindow(false);
+    });
+    
+    ipcMain.handle("browser:new-private-window", () => {
+      createWindow(true);
+    });
+    
+  ipcMain.handle("browser:get-state", (event) => { const ctx = getContextFromWebContents(event.sender); if (ctx) return getSnapshot(ctx); });
+  ipcMain.handle("browser:create-tab", (event) => { const ctx = getContextFromWebContents(event.sender); if (ctx) return createTab(ctx); });
+  ipcMain.handle("browser:select-tab", (event, tabId: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return; if (isIdentifier(tabId)) selectTab(ctx, tabId); });
+  ipcMain.handle("browser:close-tab", (event, tabId: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return; if (isIdentifier(tabId)) closeTab(ctx, tabId); });
+  ipcMain.handle("browser:navigate", (event, tabId: unknown, url: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
+    if (isIdentifier(tabId) && typeof url === "string" && isAllowedNavigation(url)) navigateTab(ctx, tabId, url);
   });
-  ipcMain.handle("browser:run-command", (_event, command: unknown) => { if (typeof command === "string" && validCommands.has(command as BrowserCommand)) runBrowserCommand(command as BrowserCommand); });
+  ipcMain.handle("browser:run-command", (event, command: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return; if (typeof command === "string" && validCommands.has(command as BrowserCommand)) runBrowserCommand(ctx, command as BrowserCommand); });
 
-  ipcMain.handle("browser:update-tab-group", (_event, groupId: unknown, updates: unknown) => {
+  ipcMain.handle("browser:update-tab-group", (event, groupId: unknown, updates: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (typeof groupId === "string" && updates && typeof updates === "object") {
-      updateTabGroup(groupId, updates as Partial<import("../shared/browser").TabGroup>);
+      updateTabGroup(ctx, groupId, updates as Partial<import("../shared/browser").TabGroup>);
     }
   });
 
-  ipcMain.handle("browser:show-tab-group-context-menu", (_event, groupId: unknown) => {
-    if (typeof groupId !== "string" || !tabGroups.has(groupId)) return;
+  ipcMain.handle("browser:show-tab-group-context-menu", (event, groupId: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
+    if (typeof groupId !== "string" || !ctx.tabGroups.has(groupId)) return;
     const colors: import("../shared/browser").TabGroupColor[] = ["grey", "blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange"];
     const template: MenuItemConstructorOptions[] = colors.map(color => ({
       label: color.charAt(0).toUpperCase() + color.slice(1),
       type: "radio",
-      checked: tabGroups.get(groupId)?.color === color,
-      click: () => updateTabGroup(groupId, { color })
+      checked: ctx.tabGroups.get(groupId)?.color === color,
+      click: () => updateTabGroup(ctx, groupId, { color })
     }));
     Menu.buildFromTemplate(template).popup();
   });
 
-  ipcMain.handle("browser:show-tab-context-menu", (_event, tabId: unknown) => {
-    if (!isIdentifier(tabId) || !tabs.has(tabId)) return;
+  ipcMain.handle("browser:show-tab-context-menu", (event, tabId: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
+    if (!isIdentifier(tabId) || !ctx.tabs.has(tabId)) return;
     const template: MenuItemConstructorOptions[] = [
       {
         label: "New Tab",
         accelerator: "CmdOrCtrl+T",
-        click: () => createTab()
+        click: () => createTab(ctx)
       },
       {
         label: "Reload",
         accelerator: "CmdOrCtrl+R",
         click: () => {
-          const record = tabs.get(tabId);
+          const record = ctx.tabs.get(tabId);
           if (record?.view) {
             if (record.isShowingError && record.lastFailedUrl) {
-              navigateTab(tabId, record.lastFailedUrl);
+              navigateTab(ctx, tabId, record.lastFailedUrl);
             } else {
               record.view.webContents.reload();
             }
@@ -1306,126 +1430,146 @@ function registerIpcHandlers(): void {
       },
       {
         label: "Duplicate Tab",
-        click: () => duplicateTab(tabId)
+        click: () => duplicateTab(ctx, tabId)
       },
       { type: "separator" },
       {
-        label: tabs.get(tabId)?.state.isPinned ? "Unpin Tab" : "Pin Tab",
-        click: () => togglePinTab(tabId)
+        label: ctx.tabs.get(tabId)?.state.isPinned ? "Unpin Tab" : "Pin Tab",
+        click: () => togglePinTab(ctx, tabId)
       },
       {
-        label: tabs.get(tabId)?.state.isMuted ? "Unmute Tab" : "Mute Tab",
-        click: () => toggleMuteTab(tabId)
+        label: ctx.tabs.get(tabId)?.state.isMuted ? "Unmute Tab" : "Mute Tab",
+        click: () => toggleMuteTab(ctx, tabId)
       },
       { type: "separator" },
       {
         label: "Add Tab to New Group",
-        enabled: !tabs.get(tabId)?.state.isPinned,
-        click: () => createTabGroup(tabId)
+        enabled: !ctx.tabs.get(tabId)?.state.isPinned,
+        click: () => createTabGroup(ctx, tabId)
       },
-      ...(tabs.get(tabId)?.state.groupId ? [{
+      ...(ctx.tabs.get(tabId)?.state.groupId ? [{
         label: "Remove from Group",
-        click: () => setTabGroup(tabId, undefined)
+        click: () => setTabGroup(ctx, tabId, undefined)
       }] : []),
-      ...(tabGroups.size > 0 ? [{
+      ...(ctx.tabGroups.size > 0 ? [{
         label: "Add Tab to Group",
-        enabled: !tabs.get(tabId)?.state.isPinned,
-        submenu: Array.from(tabGroups.values()).map(g => ({
+        enabled: !ctx.tabs.get(tabId)?.state.isPinned,
+        submenu: Array.from(ctx.tabGroups.values()).map(g => ({
           label: g.name || "Unnamed Group",
-          click: () => setTabGroup(tabId, g.id)
+          click: () => setTabGroup(ctx, tabId, g.id)
         }))
       }] : []),
       { type: "separator" },
       {
         label: "Close Tab",
         accelerator: "CmdOrCtrl+W",
-        click: () => closeTab(tabId)
+        click: () => closeTab(ctx, tabId)
       },
       {
         label: "Close Other Tabs",
         click: () => {
-          const toClose = [...tabs.values()].filter(t => t.state.id !== tabId);
-          toClose.forEach(t => closeTab(t.state.id));
+          const toClose = [...ctx.tabs.values()].filter(t => t.state.id !== tabId);
+          toClose.forEach(t => closeTab(ctx, t.state.id));
         }
       },
       {
         label: "Close Tabs to the Right",
         click: () => {
-          const ordered = [...tabs.values()];
+          const ordered = [...ctx.tabs.values()];
           const index = ordered.findIndex(t => t.state.id === tabId);
           if (index !== -1) {
-            ordered.slice(index + 1).forEach(t => closeTab(t.state.id));
+            ordered.slice(index + 1).forEach(t => closeTab(ctx, t.state.id));
           }
         }
       }
     ];
     const menu = Menu.buildFromTemplate(template);
-    menu.popup({ window: mainWindow ?? undefined });
+    menu.popup({ window: ctx.window ?? undefined });
   });
 
-  ipcMain.handle("browser:toggle-bookmark", (_event, tabId: unknown) => { if (isIdentifier(tabId)) toggleBookmark(tabId); });
-  ipcMain.handle("browser:remove-bookmark", (_event, bookmarkId: unknown) => {
+  ipcMain.handle("browser:toggle-bookmark", (event, tabId: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return; if (isIdentifier(tabId)) toggleBookmark(ctx, tabId); });
+  ipcMain.handle("browser:remove-bookmark", (event, bookmarkId: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (isIdentifier(bookmarkId)) {
       dataStore.removeBookmark(bookmarkId);
-      publishState();
+      publishAllStates();
     }
   });
-  ipcMain.handle("browser:update-bookmark", (_event, bookmarkId: unknown, url: unknown, title: unknown, folderId: unknown) => {
+  ipcMain.handle("browser:update-bookmark", (event, bookmarkId: unknown, url: unknown, title: unknown, folderId: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (typeof bookmarkId === "string" && typeof url === "string" && typeof title === "string") {
       dataStore.updateBookmark(bookmarkId, url, title, typeof folderId === "string" ? folderId : undefined);
-      publishState();
+      publishAllStates();
     }
   });
 
-  ipcMain.handle("browser:add-shortcut", (_event, url: unknown, title: unknown) => {
+  ipcMain.handle("browser:add-shortcut", (event, url: unknown, title: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (typeof url === "string" && typeof title === "string") {
       dataStore.addShortcut(url, title);
-      publishState();
+      publishAllStates();
     }
   });
 
-  ipcMain.handle("browser:update-shortcut", (_event, shortcutId: unknown, url: unknown, title: unknown) => {
+  ipcMain.handle("browser:update-shortcut", (event, shortcutId: unknown, url: unknown, title: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (typeof shortcutId === "string" && typeof url === "string" && typeof title === "string") {
       dataStore.updateShortcut(shortcutId, url, title);
-      publishState();
+      publishAllStates();
     }
   });
 
-  ipcMain.handle("browser:remove-shortcut", (_event, shortcutId: unknown) => {
+  ipcMain.handle("browser:remove-shortcut", (event, shortcutId: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (isIdentifier(shortcutId)) {
       dataStore.removeShortcut(shortcutId);
-      publishState();
+      publishAllStates();
     }
   });
   
-  ipcMain.handle("browser:create-bookmark-folder", (_event, name: unknown) => {
+  ipcMain.handle("browser:create-bookmark-folder", (event, name: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (typeof name === "string") {
       const id = dataStore.createBookmarkFolder(name);
-      publishState();
+      publishAllStates();
       return id;
     }
     return "";
   });
 
-  ipcMain.handle("browser:rename-bookmark-folder", (_event, folderId: unknown, name: unknown) => {
+  ipcMain.handle("browser:rename-bookmark-folder", (event, folderId: unknown, name: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (typeof folderId === "string" && typeof name === "string") {
       dataStore.renameBookmarkFolder(folderId, name);
-      publishState();
+      publishAllStates();
     }
   });
 
-  ipcMain.handle("browser:delete-bookmark-folder", (_event, folderId: unknown) => {
+  ipcMain.handle("browser:delete-bookmark-folder", (event, folderId: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (typeof folderId === "string") {
       const success = dataStore.deleteBookmarkFolder(folderId);
-      if (success) publishState();
+      if (success) publishAllStates();
       return success;
     }
     return false;
   });
 
-  ipcMain.handle("browser:import-bookmarks", async () => {
-    if (!mainWindow) return;
-    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+  ipcMain.handle("browser:import-bookmarks", async (event) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
+    if (!ctx.window) return;
+    const { canceled, filePaths } = await dialog.showOpenDialog(ctx.window, {
       title: "Import Bookmarks",
       properties: ["openFile"],
       filters: [{ name: "HTML Files", extensions: ["html", "htm"] }],
@@ -1438,7 +1582,7 @@ function registerIpcHandlers(): void {
       const parsedBookmarks = parseBookmarkHtml(html);
       
       if (parsedBookmarks.length === 0) {
-        dialog.showMessageBox(mainWindow, {
+        dialog.showMessageBox(ctx.window, {
           type: "info",
           title: "Invalid Bookmark File",
           message: "No bookmarks found.",
@@ -1449,15 +1593,17 @@ function registerIpcHandlers(): void {
       }
       
       const count = dataStore.addImportedBookmarks(parsedBookmarks);
-      if (count > 0) publishState();
+      if (count > 0) publishAllStates();
     } catch (e) {
       console.error("Failed to import bookmarks:", e);
     }
   });
 
-  ipcMain.handle("browser:export-bookmarks", async () => {
-    if (!mainWindow) return;
-    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+  ipcMain.handle("browser:export-bookmarks", async (event) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
+    if (!ctx.window) return;
+    const { canceled, filePath } = await dialog.showSaveDialog(ctx.window, {
       title: "Export Bookmarks",
       defaultPath: "bookmarks.html",
       filters: [{ name: "HTML Files", extensions: ["html", "htm"] }],
@@ -1474,18 +1620,22 @@ function registerIpcHandlers(): void {
       console.error("Failed to export bookmarks:", e);
     }
   });
-  ipcMain.handle("browser:update-preferences", (_event, updates: unknown) => {
+  ipcMain.handle("browser:update-preferences", (event, updates: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (typeof updates === "object" && updates !== null) {
       dataStore.updatePreferences(updates);
       nativeTheme.themeSource = dataStore.getPreferences().appearance;
       updateDownloadConfig();
-      publishState();
+      publishAllStates();
     }
   });
 
-  ipcMain.handle("browser:choose-new-tab-background", async () => {
-    if (!mainWindow) return;
-    const result = await dialog.showOpenDialog(mainWindow, {
+  ipcMain.handle("browser:choose-new-tab-background", async (event) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
+    if (!ctx.window) return;
+    const result = await dialog.showOpenDialog(ctx.window, {
       properties: ["openFile"],
       filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp", "gif"] }]
     });
@@ -1495,16 +1645,18 @@ function registerIpcHandlers(): void {
         const dest = path.join(app.getPath("userData"), "custom-background");
         import("node:fs").then(fs => fs.copyFileSync(src, dest));
         dataStore.updatePreferences({ newTabBackground: `lily-bg://image?t=${Date.now()}` });
-        publishState();
+        publishAllStates();
       } catch (e) {
         console.error("Failed to copy background image", e);
       }
     }
   });
-  ipcMain.handle("browser:clear-history", () => {
+  ipcMain.handle("browser:clear-history", (event) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     dataStore.clearHistory();
     recentHistoryUrls.clear();
-    publishState();
+    publishAllStates();
   });
   ipcMain.handle("browser:clear-browsing-data", async (_event, options: { history: boolean; cookies: boolean; cache: boolean }) => {
     if (!options || typeof options !== "object") return;
@@ -1522,7 +1674,7 @@ function registerIpcHandlers(): void {
         await session.defaultSession.clearCache();
       }
       if (options.history) {
-        publishState();
+        publishAllStates();
       }
     } catch (error) {
       console.error("Failed to clear browsing data:", error);
@@ -1539,7 +1691,9 @@ function registerIpcHandlers(): void {
     }
   }
 
-  ipcMain.handle("browser:resolve-permission", (_event, reqId: unknown, decision: unknown) => {
+  ipcMain.handle("browser:resolve-permission", (event, reqId: unknown, decision: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (typeof reqId !== "string" || (decision !== "allow" && decision !== "block" && decision !== "dismiss")) return;
     
     cleanStaleDismissals();
@@ -1577,38 +1731,60 @@ function registerIpcHandlers(): void {
         for (const cb of callbacks) cb(false);
       }
     }
-    publishState();
+    publishAllStates();
   });
 
-  ipcMain.handle("browser:remove-permission", (_event, origin: unknown, category: unknown) => {
+  ipcMain.handle("browser:remove-permission", (event, origin: unknown, category: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (typeof origin === "string" && typeof category === "string") {
       dataStore.removePermission(origin, category as PermissionCategory);
-      publishState();
+      publishAllStates();
     }
   });
 
-  ipcMain.handle("browser:clear-all-permissions", () => {
+  ipcMain.handle("browser:clear-all-permissions", (event) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     dataStore.clearAllPermissions();
-    publishState();
+    publishAllStates();
   });
 
-  ipcMain.handle("browser:remove-history-entry", (_event, historyId: unknown) => {
+  ipcMain.handle("browser:remove-history-entry", (event, historyId: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (isIdentifier(historyId)) {
       dataStore.removeHistoryEntry(historyId);
-      publishState();
+      publishAllStates();
     }
   });
-  ipcMain.handle("browser:open-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) openCompletedDownload(downloadId); });
-  ipcMain.handle("browser:reveal-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) revealCompletedDownload(downloadId); });
-  ipcMain.handle("browser:pause-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) pauseDownload(downloadId); });
-  ipcMain.handle("browser:resume-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) resumeDownload(downloadId); });
-  ipcMain.handle("browser:cancel-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) cancelDownload(downloadId); });
-  ipcMain.handle("browser:remove-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) removeDownload(downloadId); });
-  ipcMain.handle("browser:retry-download", (_event, downloadId: unknown) => { if (isIdentifier(downloadId)) retryDownload(downloadId); });
+  ipcMain.handle("browser:open-download", (event, downloadId: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return; if (isIdentifier(downloadId)) openCompletedDownload(downloadId); });
+  ipcMain.handle("browser:reveal-download", (event, downloadId: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return; if (isIdentifier(downloadId)) revealCompletedDownload(downloadId); });
+  ipcMain.handle("browser:pause-download", (event, downloadId: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return; if (isIdentifier(downloadId)) pauseDownload(downloadId); });
+  ipcMain.handle("browser:resume-download", (event, downloadId: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return; if (isIdentifier(downloadId)) resumeDownload(downloadId); });
+  ipcMain.handle("browser:cancel-download", (event, downloadId: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return; if (isIdentifier(downloadId)) cancelDownload(downloadId); });
+  ipcMain.handle("browser:remove-download", (event, downloadId: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return; if (isIdentifier(downloadId)) removeDownload(downloadId); });
+  ipcMain.handle("browser:retry-download", (event, downloadId: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return; if (isIdentifier(downloadId)) retryDownload(downloadId); });
   ipcMain.handle("browser:clear-completed-downloads", () => clearCompletedDownloads());
-  ipcMain.handle("browser:choose-download-location", async () => {
-    if (!mainWindow) return undefined;
-    const result = await dialog.showOpenDialog(mainWindow, {
+  ipcMain.handle("browser:choose-download-location", async (event) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
+    if (!ctx.window) return undefined;
+    const result = await dialog.showOpenDialog(ctx.window, {
       properties: ["openDirectory"]
     });
     if (!result.canceled && result.filePaths.length > 0) {
@@ -1616,15 +1792,19 @@ function registerIpcHandlers(): void {
     }
     return undefined;
   });
-  ipcMain.on("browser:set-library-visible", (_event, visible: unknown) => {
+  ipcMain.on("browser:set-library-visible", (event, visible: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (typeof visible === "boolean") {
-      libraryVisible = visible;
-      applyViewLayout();
+      ctx.libraryVisible = visible;
+      applyViewLayout(ctx);
     }
   });
-  ipcMain.handle("browser:find-in-page", (_event, tabId: unknown, text: unknown, forward: unknown, findNext: unknown) => {
+  ipcMain.handle("browser:find-in-page", (event, tabId: unknown, text: unknown, forward: unknown, findNext: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (isIdentifier(tabId) && typeof text === "string" && typeof forward === "boolean" && typeof findNext === "boolean") {
-      const record = tabs.get(tabId);
+      const record = ctx.tabs.get(tabId);
       if (record?.view) {
         if (!record.state.findState) record.state.findState = { visible: true, text: "", activeMatchOrdinal: 0, matches: 0 };
         record.state.findState.text = text;
@@ -1634,13 +1814,15 @@ function registerIpcHandlers(): void {
         }
         const requestId = record.view.webContents.findInPage(text, { forward, findNext });
         record.currentFindRequestId = requestId;
-        publishState();
+        publishAllStates();
       }
     }
   });
-  ipcMain.handle("browser:stop-find-in-page", (_event, tabId: unknown, keepSelection: unknown) => {
+  ipcMain.handle("browser:stop-find-in-page", (event, tabId: unknown, keepSelection: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (isIdentifier(tabId) && typeof keepSelection === "boolean") {
-      const record = tabs.get(tabId);
+      const record = ctx.tabs.get(tabId);
       if (record?.view) {
         record.view.webContents.stopFindInPage(keepSelection ? "keepSelection" : "clearSelection");
         record.currentFindRequestId = undefined;
@@ -1648,19 +1830,21 @@ function registerIpcHandlers(): void {
           record.state.findState.text = "";
           record.state.findState.activeMatchOrdinal = 0;
           record.state.findState.matches = 0;
-          publishState();
+          publishAllStates();
         }
       }
     }
   });
-  ipcMain.handle("browser:set-find-visible", (_event, tabId: unknown, visible: unknown) => {
+  ipcMain.handle("browser:set-find-visible", (event, tabId: unknown, visible: unknown) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (isIdentifier(tabId) && typeof visible === "boolean") {
-      const record = tabs.get(tabId);
+      const record = ctx.tabs.get(tabId);
       if (record) {
         if (!record.state.findState) record.state.findState = { visible: false, text: "", activeMatchOrdinal: 0, matches: 0 };
         record.state.findState.visible = visible;
         if (visible) {
-          mainWindow?.webContents.focus();
+          ctx.window?.webContents.focus();
         } else {
           record.state.findState.text = "";
           record.state.findState.activeMatchOrdinal = 0;
@@ -1668,14 +1852,16 @@ function registerIpcHandlers(): void {
           record.currentFindRequestId = undefined;
           if (record.view) record.view.webContents.stopFindInPage("clearSelection");
         }
-        publishState();
+        publishAllStates();
       }
     }
   });
-  ipcMain.on("browser:set-content-bounds", (_event, bounds: BrowserBounds) => {
+  ipcMain.on("browser:set-content-bounds", (event, bounds: BrowserBounds) => {
+      const ctx = getContextFromWebContents(event.sender);
+      if (!ctx) return;
     if (bounds && [bounds.x, bounds.y, bounds.width, bounds.height].every((value) => typeof value === "number" && Number.isFinite(value))) {
-      browserBounds = { x: Math.max(0, Math.round(bounds.x)), y: Math.max(0, Math.round(bounds.y)), width: Math.max(0, Math.round(bounds.width)), height: Math.max(0, Math.round(bounds.height)) };
-      applyViewLayout();
+      ctx.browserBounds = { x: Math.max(0, Math.round(bounds.x)), y: Math.max(0, Math.round(bounds.y)), width: Math.max(0, Math.round(bounds.width)), height: Math.max(0, Math.round(bounds.height)) };
+      applyViewLayout(ctx);
     }
   });
 }
@@ -1735,7 +1921,13 @@ function setupPermissions(): void {
       if (decision === "block") return callback(false);
     }
     
-    const record = Array.from(tabs.values()).find(t => t.view && t.view.webContents.id === webContents.id);
+    let record: TabRecord | undefined;
+    for (const context of browserWindows.values()) {
+      record = Array.from(context.tabs.values()).find(t => t.view && t.view.webContents.id === webContents.id);
+      if (record) {
+        break;
+      }
+    }
     if (!record) return callback(false);
     
     const burstKey = `${record.state.id}:${origin}`;
@@ -1760,7 +1952,7 @@ function setupPermissions(): void {
       const callbacks = pendingPermissionCallbacks.get(existingPrompt.id);
       if (callbacks) {
         callbacks.push(callback);
-        publishState();
+        publishAllStates();
         return; // Suppress creating a new prompt
       }
     }
@@ -1768,7 +1960,7 @@ function setupPermissions(): void {
     const reqId = randomUUID();
     pendingPermissionCallbacks.set(reqId, [callback]);
     pendingPermissions.push({ id: reqId, tabId: record.state.id, origin, category: promptCategory });
-    publishState();
+    publishAllStates();
   });
 
   session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
@@ -1838,15 +2030,15 @@ app.whenReady().then(() => {
   updateDownloadConfig();
   
   nativeTheme.on("updated", () => {
-    publishState();
+    publishAllStates();
   });
   setupPermissions();
   registerIpcHandlers();
   registerDownloadHandler();
   buildApplicationMenu();
-  createWindow();
+  createWindow(false);
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (browserWindows.size === 0) createWindow(false);
   });
 });
 
